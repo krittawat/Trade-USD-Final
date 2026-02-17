@@ -133,3 +133,67 @@ class TradeRecord(BaseModel):
     session: MarketSession = MarketSession.CLOSED
     tags: list[str] = Field(default_factory=list)
     notes: str = ""
+
+
+# ====================================================================
+# Pattern Signal — สัญญาณจาก PatternDetector
+# ====================================================================
+
+class PatternSignal(BaseModel):
+    """สัญญาณ pattern ที่ตรวจพบ จาก PatternDetector."""
+    name: str                     # ชื่อ pattern เช่น "bullish_engulfing"
+    direction: str                # "bullish" | "bearish" | "neutral"
+    strength: float               # 0.0-1.0
+    bar_index: int = -1
+    details: dict = Field(default_factory=dict)
+
+
+# ====================================================================
+# Self-Training Models — ผลฝึกซ้อมและรายงานการฝึก
+# ====================================================================
+
+class PracticeResult(BaseModel):
+    """
+    ผลลัพธ์จากการฝึกซ้อม strategy บนข้อมูลอดีต.
+
+    สร้างจาก PracticeEngine.run_practice() — ไม่ส่งออเดอร์จริง.
+    ใช้เปรียบเทียบ strategies และเลือกตัวที่ดีที่สุด.
+    """
+    strategy_name: str               # ชื่อ strategy ที่ฝึก
+    symbol: str                      # สัญลักษณ์ เช่น XAUUSDm
+    params: dict = Field(default_factory=dict)  # parameters ที่ใช้
+    total_trades: int = 0            # จำนวนเทรดทั้งหมด
+    wins: int = 0                    # จำนวนชนะ
+    losses: int = 0                  # จำนวนแพ้
+    win_rate: float = 0.0            # อัตราชนะ (0.0 - 1.0)
+    profit_factor: float = 0.0       # PF = total_profit / total_loss
+    max_drawdown: float = 0.0        # Max DD (% of peak equity)
+    total_r: float = 0.0             # ผลรวม R ทั้งหมด
+    expectancy: float = 0.0          # กำไรที่คาดหวังต่อเทรด (R)
+    avg_rr: float = 0.0              # R:R เฉลี่ย
+    score: float = 0.0               # composite score: PF × WR × (1 - DD/100)
+    candles_tested: int = 0          # จำนวนแท่งเทียนที่ทดสอบ
+    regime: str = "UNKNOWN"          # สภาวะตลาดที่ทดสอบ
+    session: str = ""                # session ตอนทดสอบ
+    patterns_found: dict = Field(default_factory=dict)     # pattern → count
+    pattern_win_rates: dict = Field(default_factory=dict)  # pattern → win_rate
+    news_stats: dict = Field(default_factory=dict)         # news_context → {count, win_rate}
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+class TrainingReport(BaseModel):
+    """
+    รายงานผลการฝึกซ้อมรอบเดียว (Training Session).
+
+    สร้างจาก TrainingOrchestrator.run_training_session().
+    เก็บสรุปผลรวม: จำนวน symbols, strategies ที่ทดสอบ, ตัวที่ดีที่สุด.
+    """
+    session_id: str                  # ID ของ training session (UUID)
+    started_at: datetime             # เวลาเริ่ม
+    completed_at: datetime           # เวลาจบ
+    duration_seconds: float = 0.0    # ระยะเวลาฝึก (วินาที)
+    symbols_trained: list[str] = Field(default_factory=list)    # symbols ที่ฝึก
+    strategies_tested: int = 0       # จำนวน strategies ที่ลอง
+    best_performers: list[PracticeResult] = Field(default_factory=list)  # ผลดีที่สุด
+    params_evolved: dict = Field(default_factory=dict)    # parameters ที่ evolve แล้ว
+    improvements: dict = Field(default_factory=dict)      # ปรับปรุงจากรอบก่อน

@@ -65,6 +65,7 @@ class PreTradeGate:
         current_session: str = "CLOSED",
         news_safe: bool = True,
         open_positions_count: int = 0,
+        total_positions_count: int = 0,
     ) -> GateResult:
         """
         ตรวจสอบทุกเงื่อนไข — return GateResult.
@@ -113,9 +114,13 @@ class PreTradeGate:
                 details["floating_dd_pct"] = round(floating_dd_pct, 2)
 
         # --- ด่าน 9: Daily loss limit ---
-        # TODO: implement daily loss tracking
-        # if account.daily_pl < -daily_loss_limit:
-        #     reasons.append(BlockReason.DAILY_LOSS_EXCEEDED)
+        if account.balance > 0 and account.daily_pl < 0:
+            max_daily_loss_pct = 5.0  # 5% daily loss limit
+            daily_loss_pct = abs(account.daily_pl) / account.balance * 100
+            if daily_loss_pct > max_daily_loss_pct:
+                reasons.append(BlockReason.DAILY_LOSS_EXCEEDED)
+                details["daily_loss_pct"] = round(daily_loss_pct, 2)
+                details["max_daily_loss_pct"] = max_daily_loss_pct
 
         # --- ด่าน 10: Capital floor ---
         if account.initial_balance > 0:
@@ -125,11 +130,28 @@ class PreTradeGate:
                 details["equity"] = account.equity
                 details["floor"] = floor
 
-        # --- ด่าน 11: Max positions ---
+        # --- ด่าน 11: Max positions per symbol ---
         if open_positions_count >= self.settings.max_positions_per_symbol:
             reasons.append(BlockReason.MAX_POSITIONS)
             details["open"] = open_positions_count
             details["max"] = self.settings.max_positions_per_symbol
+
+        # --- ด่าน 11b: Max TOTAL positions across ALL symbols ---
+        max_total = getattr(self.settings, 'max_total_positions', 10)
+        if total_positions_count >= max_total:
+            reasons.append(BlockReason.MAX_POSITIONS)
+            details["total_open"] = total_positions_count
+            details["max_total"] = max_total
+
+        # --- ด่าน 11c: Aggregate margin utilization ---
+        # ถ้า margin ที่ใช้อยู่เกิน 50% ของ equity → บล็อก (ป้องกันพอตระเบิด)
+        max_margin_pct = 50.0
+        if account.equity > 0 and account.margin > 0:
+            margin_usage_pct = (account.margin / account.equity) * 100
+            if margin_usage_pct > max_margin_pct:
+                reasons.append(BlockReason.MAX_POSITIONS)
+                details["margin_usage_pct"] = round(margin_usage_pct, 2)
+                details["max_margin_pct"] = max_margin_pct
 
         # --- ด่าน 12: SL mandatory ---
         if decision.stop_loss is None or decision.stop_loss <= 0:

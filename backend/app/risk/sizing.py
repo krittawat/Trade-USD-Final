@@ -51,8 +51,15 @@ def calculate_lot_size(
     max_risk_usd = account.equity * (settings.max_risk_per_trade_pct / 100)
     
     # --- คำนวณ SL distance ---
-    # ใช้ entry_price จาก argument หรือประมาณจาก decision
-    price = entry_price or decision.stop_loss * 1.001  # Stub: ใช้ราคาจริงจาก MT5
+    # ใช้ entry_price จาก MT5 หรือประมาณจาก take_profit/SL ratio
+    if entry_price:
+        price = entry_price
+    elif decision.take_profit and decision.stop_loss:
+        # ประมาณ entry จากจุดกึ่งกลาง SL-TP
+        price = (decision.stop_loss + decision.take_profit) / 2
+    else:
+        logger.error("no_entry_price", extra={"symbol": decision.symbol})
+        return BlockReason.LOT_SIZE_INVALID  # ไม่สามารถคำนวณได้ถ้าไม่มี entry price
     sl_distance = abs(price - decision.stop_loss)
     
     if sl_distance <= 0:
@@ -89,6 +96,34 @@ def calculate_lot_size(
             "max_pct": settings.max_risk_per_trade_pct,
         })
         return BlockReason.RISK_EXCEEDED
+
+    # --- ด่าน Margin Safety (Leverage 1:2000 overtrade protection) ---
+    # margin_required = (lot × contract_size × price) / leverage
+    # บล็อกถ้า margin_required > 25% ของ free_margin
+    leverage = getattr(settings, 'leverage', 2000)
+    margin_required = (lot * profile.contract_size * price) / leverage
+    max_margin_usage_pct = 25.0  # ใช้ margin ได้ไม่เกิน 25% ของ free margin
+    if account.free_margin > 0 and margin_required > (account.free_margin * max_margin_usage_pct / 100):
+        logger.warning("margin_usage_exceeded", extra={
+            "symbol": decision.symbol,
+            "margin_required": round(margin_required, 2),
+            "free_margin": round(account.free_margin, 2),
+            "usage_pct": round(margin_required / account.free_margin * 100, 2),
+            "max_usage_pct": max_margin_usage_pct,
+            "stage": "risk",
+            "result": "blocked",
+        })
+        return BlockReason.LOT_SIZE_INVALID
+
+    # --- Lot cap (retail safety) ---
+    MAX_LOT_CAP = 1.0
+    if lot > MAX_LOT_CAP:
+        logger.warning("lot_capped", extra={
+            "symbol": decision.symbol,
+            "raw_lot": lot,
+            "capped_to": MAX_LOT_CAP,
+        })
+        lot = MAX_LOT_CAP
 
     # --- สร้าง OrderPlan ---
     logger.info("lot_calculated", extra={
