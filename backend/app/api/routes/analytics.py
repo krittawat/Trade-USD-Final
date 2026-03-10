@@ -99,3 +99,33 @@ async def get_brain_performance(
         "strategies": [],
         "count": 0,
     }
+
+
+@router.get("/analytics/symbol-tuner/latest")
+async def get_symbol_tuner_latest(
+    symbol: str = Query(default="", description="filter by symbol (e.g. XAUUSD)"),
+):
+    """
+    ดึง snapshot ล่าสุดรายคู่จาก symbol_tuner_snapshots
+    (win_rate + auto-tuned thresholds).
+    """
+    try:
+        from backend.trader.data.mapper import mapper
+        from backend.trader.storage.sqlite_db import db as trader_db
+
+        sym = (symbol or "").strip()
+        std_symbol = mapper.to_standard(sym) if sym else ""
+        rows = trader_db.get_latest_symbol_tuner_snapshots(symbol=std_symbol or None)
+        return {
+            "count": len(rows),
+            "symbol": std_symbol or "ALL",
+            "snapshots": rows,
+        }
+    except Exception as e:
+        logger.error("symbol_tuner_analytics_error", extra={"error": str(e)})
+        return {
+            "count": 0,
+            "symbol": (symbol or "ALL"),
+            "snapshots": [],
+            "error": str(e),
+        }

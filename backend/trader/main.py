@@ -30,6 +30,7 @@ from backend.trader.storage.sqlite_db import db
 from backend.trader.notification.telegram import notify_trade_signal
 from backend.trader.brain.shadow_engine import shadow_engine
 from backend.trader.brain.feedback_loop import feedback_loop
+from backend.trader.brain.symbol_tuner import symbol_tuner
 from backend.trader.features.smt_divergence import smt_tracker
 from backend.trader.data.time_utils import time_utils
 from backend.trader.services.maintenance import MaintenanceScheduler
@@ -57,6 +58,18 @@ CONFIG = {
         "EURUSDm": ["M3", "M5", "M6", "M12", "M15", "M30", "H1", "H2", "H4", "D1"],
         "GBPUSDm": ["M3", "M5", "M6", "M12", "M15", "M30", "H1", "H2", "H4", "D1"],
         "USDJPYm": ["M3", "M5", "M6", "M12", "M15", "M30", "H1", "H2", "H4", "D1"]
+    },
+    # Entry TF per asset to reduce noise/over-trading.
+    "execution_timeframes": {
+        "XAUUSDm": ["M5", "M15", "H1"],
+        "XAGUSDm": ["M5", "M15", "H1"],
+        "BTCUSDm": ["M5", "M15", "H1"],
+        "USOILm": ["M5", "M15", "H1"],
+        "US30m": ["M5", "M15", "H1"],
+        "USTECm": ["M5", "M15", "H1"],
+        "EURUSDm": ["M12", "M15", "H1"],
+        "GBPUSDm": ["M12", "M15", "H1"],
+        "USDJPYm": ["M12", "M15", "H1"]
     },
     "safety_cap": {
         "equity_threshold": 300.0,
@@ -201,6 +214,67 @@ def _safe_float(value, default: float = 0.0) -> float:
         return out
     except Exception:
         return default
+
+
+def _extract_model_from_comment(comment: str) -> str:
+    text = str(comment or "").strip()
+    if not text:
+        return "UNKNOWN"
+    if "OPUS_LM_" in text:
+        return text.split("OPUS_LM_", 1)[-1] or "UNKNOWN"
+    if "OPUS_" in text:
+        return text.split("OPUS_", 1)[-1] or "UNKNOWN"
+    return text[:40]
+
+
+def _deal_closed_at_iso(deal_obj) -> str:
+    try:
+        ts = int(getattr(deal_obj, "time", 0) or 0)
+        if ts <= 0:
+            return datetime.now(timezone.utc).isoformat()
+        return datetime.fromtimestamp(ts, timezone.utc).isoformat()
+    except Exception:
+        return datetime.now(timezone.utc).isoformat()
+
+
+def _persist_closed_deal(deal_obj):
+    from backend.trader.data.mapper import mapper
+
+    std_symbol = mapper.to_standard(getattr(deal_obj, "symbol", "UNKNOWN"))
+    inserted = db.record_closed_trade({
+        "deal_ticket": getattr(deal_obj, "ticket", None),
+        "order_ticket": getattr(deal_obj, "order", None),
+        "position_id": getattr(deal_obj, "position_id", None),
+        "symbol": getattr(deal_obj, "symbol", std_symbol),
+        "standard_symbol": std_symbol,
+        "model": _extract_model_from_comment(getattr(deal_obj, "comment", "")),
+        "side": "BUY" if getattr(deal_obj, "type", 0) == 1 else "SELL",
+        "volume": getattr(deal_obj, "volume", 0.0),
+        "price": getattr(deal_obj, "price", 0.0),
+        "profit": getattr(deal_obj, "profit", 0.0),
+        "commission": getattr(deal_obj, "commission", 0.0),
+        "swap": getattr(deal_obj, "swap", 0.0),
+        "closed_at": _deal_closed_at_iso(deal_obj),
+        "close_reason": getattr(deal_obj, "comment", ""),
+    })
+    return std_symbol, inserted
+
+
+def _bootstrap_closed_deals_360d(mt5_module):
+    end_time = datetime.now(timezone.utc)
+    start_time = end_time - timedelta(days=360)
+    deals = mt5_module.history_deals_get(start_time, end_time)
+    if not deals:
+        logger.info("  📈 360D Stats bootstrap: no historical deals found.")
+        return
+
+    inserted_count = 0
+    for d in deals:
+        if getattr(d, "entry", None) == 1 and getattr(d, "type", None) in (0, 1):
+            _, inserted = _persist_closed_deal(d)
+            if inserted:
+                inserted_count += 1
+    logger.info(f"  📈 360D Stats bootstrap complete: +{inserted_count} closed deals synced.")
 
 
 def _compute_atr_deviation(df: pd.DataFrame) -> float:
@@ -498,6 +572,9 @@ def main():
     if args.mode in ["live", "dry_run"]:
         if not fetcher.connect(): return
         brain_bridge.connect()
+        _bootstrap_closed_deals_360d(mt5)
+        symbol_tuner.set_symbol_universe(CONFIG["symbols"] + CONFIG.get("shadow_symbols", []))
+        symbol_tuner.refresh(force=True)
         set_app_start_time()
 
         from backend.trader.services.news_filter import news_filter
@@ -588,19 +665,30 @@ def main():
                     now = datetime.now()
                     deals = mt5.history_deals_get(LAST_DEAL_TIME, now)
                     if deals:
-                        from backend.trader.data.mapper import mapper
                         from backend.trader.notification.telegram import notify_trade_close
                         for d in deals:
                             if d.entry == 1:
-                                if d.profit < 0: risk_engine.trigger_cooldown(mapper.to_standard(d.symbol), "Loss")
+                                std_symbol, _ = _persist_closed_deal(d)
+                                if d.profit < 0:
+                                    risk_engine.trigger_cooldown(std_symbol, "Loss")
+
                                 a_now = get_real_account_state(mt5)
-                                notify_trade_close(symbol=mapper.to_standard(d.symbol), side="BUY" if d.type == 1 else "SELL", profit=d.profit, lot=d.volume, equity=a_now['equity'], daily_pnl=a_now['daily_pnl'], comment=d.comment)
+                                notify_trade_close(
+                                    symbol=std_symbol,
+                                    side="BUY" if d.type == 1 else "SELL",
+                                    profit=d.profit,
+                                    lot=d.volume,
+                                    equity=a_now['equity'],
+                                    daily_pnl=a_now['daily_pnl'],
+                                    comment=d.comment
+                                )
                         LAST_DEAL_TIME = now
                 except Exception as _deal_err:
                     logger.error(f"Deal monitoring error: {_deal_err}", exc_info=True)
 
                 # ─── AI FEEDBACK LOOP: Refresh dynamic thresholds ───
                 feedback_loop.refresh(cycle)
+                symbol_tuner.refresh(cycle)
 
                 # ─── SMT DIVERGENCE ───
                 try:
@@ -616,6 +704,7 @@ def main():
                     from backend.trader.data.mapper import mapper
                     broker_sym = mapper.to_broker(symbol)
                     symbol_tfs = CONFIG.get("symbol_timeframes", {}).get(broker_sym, CONFIG["timeframes"])
+                    execution_tfs = CONFIG.get("execution_timeframes", {}).get(broker_sym, symbol_tfs)
                     
                     trend_map = []
                     for tf_str in symbol_tfs:
@@ -626,8 +715,11 @@ def main():
                             v_avg = int(df_tf['tick_volume'].tail(20).mean()) if v_curr else 0
                             trend_map.append(f"{tf_str}:{_get_trend_icon(df_tf)} {'HI:' if v_curr > v_avg*1.5 else 'LOW:' if v_curr < v_avg*0.5 else 'AVG:'}{v_curr}/{v_avg}")
                     
-                    logger.info(f"  {f'{C.CYAN}[SHADOW]{C.RST} ' if symbol in CONFIG.get('shadow_symbols', []) else ''}{_sym(symbol)} TREND: {' '.join(trend_map)}")
-                    for tf_str in symbol_tfs: 
+                    logger.info(
+                        f"  {f'{C.CYAN}[SHADOW]{C.RST} ' if symbol in CONFIG.get('shadow_symbols', []) else ''}"
+                        f"{_sym(symbol)} TREND: {' '.join(trend_map)} | EXEC TF: {','.join(execution_tfs)}"
+                    )
+                    for tf_str in execution_tfs:
                         tick_cycle(args.mode, symbol, tf_str, executor, cycle, cycle_cache=cycle_cache)
 
                 # ─── ALWAYS MANAGE OPEN POSITIONS (SAFETY FIRST) ───
@@ -650,6 +742,8 @@ def main():
         # ─── BACKTEST EXECUTION (Offline Simulation) ───
         if not fetcher.connect(): return
         brain_bridge.connect()
+        symbol_tuner.set_symbol_universe(CONFIG["symbols"] + CONFIG.get("shadow_symbols", []))
+        symbol_tuner.refresh(force=True)
         
         symbol = args.symbol
         broker_sym = "BTCUSD" if "BTC" in symbol else symbol # Simplified mapper

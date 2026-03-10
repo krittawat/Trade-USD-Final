@@ -1,0 +1,103 @@
+{
+  "generated_at": "2026-03-10T04:17:16.560788Z",
+  "bars": 2200,
+  "initial_equity": 100.0,
+  "results": [
+    {
+      "total_trades": 1,
+      "wins": 1,
+      "losses": 0,
+      "win_rate": 100.0,
+      "profit_factor": 123480600000.0,
+      "max_dd": 0.0,
+      "net_pnl": 123.4806,
+      "final_equity": 223.4806,
+      "symbol": "USTEC",
+      "score": 1234806000148.4807
+    },
+    {
+      "total_trades": 44,
+      "wins": 36,
+      "losses": 8,
+      "win_rate": 81.8,
+      "profit_factor": 3.84,
+      "max_dd": 6.44,
+      "net_pnl": 60.6999,
+      "final_equity": 160.7004,
+      "symbol": "USOIL",
+      "score": 116.32990000000001
+    },
+    {
+      "total_trades": 6,
+      "wins": 2,
+      "losses": 4,
+      "win_rate": 33.3,
+      "profit_factor": 0.26,
+      "max_dd": 2.34,
+      "net_pnl": -2.0132,
+      "final_equity": 97.9868,
+      "symbol": "USDJPY",
+      "score": 7.7418
+    },
+    {
+      "win_rate": 0,
+      "profit_factor": 0,
+      "max_dd": 0,
+      "total_trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "net_pnl": 0,
+      "final_equity": 100.0,
+      "symbol": "XAUUSD",
+      "score": 0.0
+    },
+    {
+      "win_rate": 0,
+      "profit_factor": 0,
+      "max_dd": 0,
+      "total_trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "net_pnl": 0,
+      "final_equity": 100.0,
+      "symbol": "BTCUSD",
+      "score": 0.0
+    },
+    {
+      "total_trades": 10,
+      "wins": 0,
+      "losses": 10,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "max_dd": 2.48,
+      "net_pnl": -2.4814,
+      "final_equity": 97.5187,
+      "symbol": "GBPUSD",
+      "score": -3.7214
+    },
+    {
+      "total_trades": 13,
+      "wins": 0,
+      "losses": 13,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "max_dd": 2.61,
+      "net_pnl": -2.6131,
+      "final_equity": 97.3869,
+      "symbol": "EURUSD",
+      "score": -3.9181
+    },
+    {
+      "total_trades": 1,
+      "wins": 0,
+      "losses": 1,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "max_dd": 83.6,
+      "net_pnl": -83.6036,
+      "final_equity": 16.3964,
+      "symbol": "US30",
+      "score": -125.4036
+    }
+  ]
+}

@@ -292,10 +292,15 @@ class BtcEliteStrategy(BaseStrategy):
         vwap_val = None
         if vol is not None and len(vol) >= self.p["vol_ma"]:
             try:
-                cv = (close * vol).rolling(self.p["vol_ma"]).sum()
-                sv = vol.rolling(self.p["vol_ma"]).sum()
-                vwap_series = cv / sv
-                vwap_val = float(vwap_series.iloc[-1])
+                window = int(self.p["vol_ma"])
+                close_arr = close.to_numpy(dtype=float)
+                vol_arr = vol.to_numpy(dtype=float)
+                cv = pd.Series(close_arr * vol_arr).rolling(window).sum()
+                sv = pd.Series(vol_arr).rolling(window).sum()
+                vwap_series = cv.div(sv.replace(0.0, np.nan))
+                vwap_last = vwap_series.iloc[-1]
+                if not pd.isna(vwap_last):
+                    vwap_val = float(vwap_last)
             except Exception:
                 pass
 

@@ -44,6 +44,7 @@ from backend.trader.features.pattern_recognition import analyze_patterns
 from backend.trader.brain.ml_scoring import calculate_trade_probability
 from backend.trader.brain.feedback_loop import feedback_loop
 from backend.trader.brain.brain_bridge import brain_bridge
+from backend.trader.brain.symbol_tuner import symbol_tuner
 
 
 logger = logging.getLogger("opus_logger")
@@ -87,6 +88,24 @@ def reset_cooldown():
     _last_trade_bar.clear()
 
 
+def _resolve_asset_profile(symbol: str) -> dict:
+    return symbol_tuner.get_profile(symbol)
+
+
+def _calc_rr(signal: dict) -> float:
+    try:
+        entry = float(signal.get("entry_price", 0))
+        sl = float(signal.get("sl", 0))
+        tp = float(signal.get("tp1", 0))
+        risk = abs(entry - sl)
+        reward = abs(tp - entry)
+        if risk <= 0:
+            return 0.0
+        return reward / risk
+    except Exception:
+        return 0.0
+
+
 def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
                                 current_bar: int = -1) -> dict:
     """
@@ -101,10 +120,11 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
     regime_name = regime.get('regime', 'UNKNOWN')
     cooldown_key = f"{context.get('symbol', 'UNKNOWN')}:{context.get('timeframe', 'NA')}"
     last_trade_bar = _last_trade_bar.get(cooldown_key, -999)
+    asset_profile = _resolve_asset_profile(_sym_debug)
 
     # Cooldown
     _is_btc = "BTC" in context.get('symbol', '')
-    required_cooldown = 3 if _is_btc else COOLDOWN_BARS
+    required_cooldown = max(1, int(asset_profile.get("cooldown_bars", COOLDOWN_BARS)))
     
     if current_bar >= 0 and (current_bar - last_trade_bar) < required_cooldown:
         if _is_btc:
@@ -328,6 +348,9 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
             
         scored_signals.append(sig)
 
+    if not scored_signals:
+        return None
+
     # ─── PHASE 3.5: VOLUME CONFLUENCE GATE ────────────────────
     # Penalize signals during volume dry-up (except counter-trend exhaustion plays)
     latest = df.iloc[-1]
@@ -384,11 +407,66 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
                 sig['confidence'] *= 1.10
                 sig['rationale'].append("🎯 Sweep Confirmation (+10%)")
 
-    # Pick best signal by new ML confidence
-    best_sig = max(scored_signals, key=lambda s: s.get('confidence', 0))
+    # ─── PHASE 4.2: ASSET PROFILE HARD GATES ──────────────────
+    min_rr = float(asset_profile.get("min_rr", 1.10))
+    rr_filtered = []
+    for sig in scored_signals:
+        rr = _calc_rr(sig)
+        sig["rr"] = rr
+        if rr < min_rr:
+            logger.info(
+                f"🚫 [SELECTOR] {sig.get('model')} RR {rr:.2f} < {min_rr:.2f} "
+                f"for {_sym_debug} - dropped"
+            )
+            continue
+        rr_filtered.append(sig)
+    if not rr_filtered:
+        return None
+
+    # ─── PHASE 4.3: CONFLUENCE-AWARE COMPOSITE SCORING ────────
+    buy_count = sum(1 for s in rr_filtered if s.get("side") == "BUY")
+    sell_count = sum(1 for s in rr_filtered if s.get("side") == "SELL")
+    htf_align = context.get('htf_ema_align', 'UNCERTAIN')
+    sweep_dir = next((e.get('direction') for e in (events or []) if e.get('type') == 'SWEEP'), None)
+    scored_rank = []
+
+    for sig in rr_filtered:
+        bonus = 0.0
+        side = sig.get("side", "")
+        rr = float(sig.get("rr", 0.0))
+        confidence = float(sig.get("confidence", 0.0))
+
+        side_support = buy_count if side == "BUY" else sell_count
+        if side_support >= 2:
+            bonus += 0.03
+            sig['rationale'].append(f"🤝 Side consensus ({side_support} models)")
+
+        if (htf_align == "BULLISH" and side == "BUY") or (htf_align == "BEARISH" and side == "SELL"):
+            bonus += 0.02
+            sig['rationale'].append("🧭 HTF trend aligned")
+
+        if (obv_bullish and side == "BUY") or ((not obv_bullish) and side == "SELL"):
+            bonus += 0.01
+            sig['rationale'].append("📈 OBV aligned")
+
+        if (sweep_dir == "LONG_SIGNAL" and side == "BUY") or (sweep_dir == "SHORT_SIGNAL" and side == "SELL"):
+            bonus += 0.02
+            sig['rationale'].append("🌊 Sweep aligned")
+
+        rr_component = min(rr / (min_rr * 1.8), 1.0)
+        composite = (confidence * 0.72) + (rr_component * 0.23) + (bonus * 0.05)
+        sig["confluence_bonus"] = round(bonus, 4)
+        sig["composite_score"] = composite
+        scored_rank.append(sig)
+
+    # Pick best signal by composite score (confidence + RR + confluence)
+    best_sig = max(scored_rank, key=lambda s: s.get('composite_score', s.get('confidence', 0)))
 
     if "BTC" in _sym_debug:
-        logger.info(f"🧬 [DEBUG] BTC Scored Signals: {[{'m': s['model'], 'c': round(s['confidence'], 3), 'r': s['raw_confidence']} for s in scored_signals]}")
+        logger.info(
+            f"🧬 [DEBUG] BTC Scored Signals: "
+            f"{[{'m': s['model'], 'c': round(s['confidence'], 3), 'rr': round(s.get('rr', 0.0), 2), 'cmp': round(s.get('composite_score', 0.0), 3)} for s in scored_rank]}"
+        )
 
     # Phase 3 Hard Gate: Probability Scoring Filter (AI Feedback Loop Enhanced)
     # Dynamic confidence threshold per strategy from shadow trade performance
@@ -397,6 +475,7 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
     # Fallback to global MIN_CONFIDENCE if feedback loop has no data
     if req_confidence == 0:
         req_confidence = MIN_CONFIDENCE
+    req_confidence = max(req_confidence, float(asset_profile.get("min_confidence", MIN_CONFIDENCE)))
     
     if best_sig.get('confidence', 0) < req_confidence:
         if "BTC" in _sym_debug:
@@ -453,5 +532,9 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
     if current_bar >= 0:
         _last_trade_bar[cooldown_key] = current_bar
 
-    logger.info(f"🧠 AI ENGINE APPROVED: {best_sig.get('model', '?')} | ML Probability: {best_sig.get('ml_score', 0):.1f}% | VolR={vol_ratio:.1f} OBV={'▲' if obv_bullish else '▼'}")
+    logger.info(
+        f"🧠 AI ENGINE APPROVED: {best_sig.get('model', '?')} | ML Probability: {best_sig.get('ml_score', 0):.1f}% "
+        f"| RR={best_sig.get('rr', 0):.2f} | Score={best_sig.get('composite_score', best_sig.get('confidence', 0)):.3f} "
+        f"| VolR={vol_ratio:.1f} OBV={'▲' if obv_bullish else '▼'}"
+    )
     return best_sig

@@ -21,7 +21,7 @@ import argparse
 import json
 import numpy as np
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from backend.trader.features.volatility import add_volatility_features
 from backend.trader.features.structure import add_structure_features, detect_displacement
 from backend.trader.features.institutional import add_institutional_features
@@ -55,6 +55,28 @@ REALISTIC_SPREAD_CAP = {
     "XAGUSD": 80,
     "BTCUSD": 800,
     "UKOIL": 100,
+}
+
+TIMEFRAME_MAP = {
+    "M1": "TIMEFRAME_M1",
+    "M2": "TIMEFRAME_M2",
+    "M3": "TIMEFRAME_M3",
+    "M4": "TIMEFRAME_M4",
+    "M5": "TIMEFRAME_M5",
+    "M6": "TIMEFRAME_M6",
+    "M10": "TIMEFRAME_M10",
+    "M12": "TIMEFRAME_M12",
+    "M15": "TIMEFRAME_M15",
+    "M20": "TIMEFRAME_M20",
+    "M30": "TIMEFRAME_M30",
+    "H1": "TIMEFRAME_H1",
+    "H2": "TIMEFRAME_H2",
+    "H3": "TIMEFRAME_H3",
+    "H4": "TIMEFRAME_H4",
+    "H6": "TIMEFRAME_H6",
+    "H8": "TIMEFRAME_H8",
+    "H12": "TIMEFRAME_H12",
+    "D1": "TIMEFRAME_D1",
 }
 
 def _fetch_mt5_spread(symbol: str) -> int:
@@ -341,25 +363,34 @@ class BacktestEngine:
             for reason, count in sorted(self._block_reasons.items(), key=lambda x: -x[1]):
                 print(f"    [{count:>4}x] {reason}")
 
-def load_mt5_data(symbol: str, bars: int) -> pd.DataFrame:
+def load_mt5_data(symbol: str, bars: int, timeframe: str = "M5", days: int = 0) -> pd.DataFrame:
     try:
         import MetaTrader5 as mt5
         from backend.trader.data.mapper import mapper
+        tf_name = (timeframe or "M5").upper()
+        tf_attr = TIMEFRAME_MAP.get(tf_name, "TIMEFRAME_M5")
+        tf_const = getattr(mt5, tf_attr, mt5.TIMEFRAME_M5)
         mt5.shutdown()
         if not mt5.initialize():
             raise RuntimeError(f"MT5 init failed: {mt5.last_error()}")
         broker_sym = mapper.to_broker(symbol)
-        print(f"  [MT5] Connected. Fetching {bars} bars for {broker_sym}...")
+        mode_text = f"{days} days" if days and days > 0 else f"{bars} bars"
+        print(f"  [MT5] Connected. Fetching {mode_text} for {broker_sym} ({tf_name})...")
         if not mt5.symbol_select(broker_sym, True):
             print(f"  [ERR] symbol_select({broker_sym}) failed: {mt5.last_error()}")
-        rates = mt5.copy_rates_from_pos(broker_sym, mt5.TIMEFRAME_M5, 0, bars)
+        if days and days > 0:
+            utc_to = datetime.now(timezone.utc)
+            utc_from = utc_to - timedelta(days=int(days))
+            rates = mt5.copy_rates_range(broker_sym, tf_const, utc_from, utc_to)
+        else:
+            rates = mt5.copy_rates_from_pos(broker_sym, tf_const, 0, bars)
         if rates is not None and len(rates) > 0:
             df = pd.DataFrame(rates)
             df["time"] = pd.to_datetime(df["time"], unit="s")
-            print(f"  [DATA] Loaded {len(df)} bars from MT5 for {broker_sym}")
+            print(f"  [DATA] Loaded {len(df)} bars from MT5 for {broker_sym} ({tf_name})")
             return df
         else:
-            raise ValueError(f"MT5 returned no data for {broker_sym}")
+            raise ValueError(f"MT5 returned no data for {broker_sym} ({tf_name})")
     except Exception as e:
         print(f"  [ERR] MT5 failed: {e}")
         import sys
@@ -369,12 +400,15 @@ def main():
     parser = argparse.ArgumentParser(description="OPUS Backtest Engine V2")
     parser.add_argument("--symbol", default="XAUUSD")
     parser.add_argument("--bars", type=int, default=2000)
+    parser.add_argument("--timeframe", default="M5")
+    parser.add_argument("--days", type=int, default=0, help="If >0, fetch by days instead of bars")
     parser.add_argument("--equity", type=float, default=100.0)
     args = parser.parse_args()
-    df = load_mt5_data(args.symbol, args.bars)
+    df = load_mt5_data(args.symbol, args.bars, timeframe=args.timeframe, days=args.days)
     engine = BacktestEngine(symbol=args.symbol, initial_equity=args.equity)
     metrics = engine.run(df)
-    results_path = f"d:/VibeCode/Trade/backend/trader/data/backtest_{args.symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    suffix = f"{args.timeframe.upper()}_{args.days}d" if args.days and args.days > 0 else f"{args.timeframe.upper()}_{args.bars}b"
+    results_path = f"d:/VibeCode/Trade/backend/trader/data/backtest_{args.symbol}_{suffix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     with open(results_path, "w") as f:
         json.dump(metrics, f, indent=2)
     print(f"\n  [FILE] Results saved to {results_path}")
