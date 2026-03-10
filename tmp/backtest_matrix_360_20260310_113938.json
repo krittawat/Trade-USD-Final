@@ -1,0 +1,88 @@
+{
+  "generated_at": "2026-03-10T11:39:38.742301+00:00",
+  "run_id": "bt360_20260310_113930_122636",
+  "engine": "trader",
+  "days": 7,
+  "requested_equity": 300.0,
+  "effective_equity": 1000.0,
+  "optimize_equity_floor": 1000.0,
+  "lookback": 100,
+  "hold_bars": 50,
+  "min_trades": 1,
+  "max_bars_per_run": 300,
+  "production_filters": {
+    "min_trades": 3,
+    "min_win_rate": 35.0,
+    "min_pf": 1.05,
+    "max_dd": 25.0,
+    "min_score": 0.0,
+    "require_positive_pnl": true
+  },
+  "timeframes": [
+    "M5"
+  ],
+  "symbols": [
+    "USTEC"
+  ],
+  "best_by_symbol": {
+    "USTEC": {
+      "total_trades": 1,
+      "wins": 0,
+      "losses": 1,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "max_dd": 50.02,
+      "net_pnl": -500.2357,
+      "final_equity": 499.7643,
+      "symbol": "USTEC",
+      "timeframe": "M5",
+      "engine": "trader",
+      "bars_used": 300,
+      "bars_raw": 1391,
+      "truncated": true,
+      "score": -236.9727,
+      "rank": 1,
+      "production_eligible": false
+    }
+  },
+  "ranked_rows": [
+    {
+      "total_trades": 1,
+      "wins": 0,
+      "losses": 1,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "max_dd": 50.02,
+      "net_pnl": -500.2357,
+      "final_equity": 499.7643,
+      "symbol": "USTEC",
+      "timeframe": "M5",
+      "engine": "trader",
+      "bars_used": 300,
+      "bars_raw": 1391,
+      "truncated": true,
+      "score": -236.9727,
+      "rank": 1,
+      "production_eligible": false
+    }
+  ],
+  "rows_all_engines": [
+    {
+      "total_trades": 1,
+      "wins": 0,
+      "losses": 1,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "max_dd": 50.02,
+      "net_pnl": -500.2357,
+      "final_equity": 499.7643,
+      "symbol": "USTEC",
+      "timeframe": "M5",
+      "engine": "trader",
+      "bars_used": 300,
+      "bars_raw": 1391,
+      "truncated": true,
+      "score": -236.9727
+    }
+  ]
+}

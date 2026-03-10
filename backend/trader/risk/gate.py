@@ -25,6 +25,38 @@ class RiskEngine:
             self.config = json.load(f).get("risk_limits", {})
         self.atr_cooldown_threshold = self.config.get("atr_deviation_cooldown_threshold", 2.2)
         self.cooldown_minutes = self.config.get("cooldown_minutes", 60)
+        self.min_equity_by_symbol = self.config.get("min_equity_by_symbol", {}) or {}
+        # Backward compatibility for older config: keep XAU dedicated key if present.
+        if "XAUUSD" not in self.min_equity_by_symbol:
+            legacy_xau_min = float(self.config.get("xau_min_equity_threshold", 150.0) or 150.0)
+            self.min_equity_by_symbol["XAUUSD"] = legacy_xau_min
+
+    @staticmethod
+    def _normalize_symbol_key(symbol: str) -> str:
+        raw = str(symbol or "").upper().rstrip('MC.')
+        if "XAU" in raw:
+            return "XAUUSD"
+        if "XAG" in raw:
+            return "XAGUSD"
+        if "BTC" in raw:
+            return "BTCUSD"
+        if "OIL" in raw:
+            return "USOIL"
+        if "30" in raw:
+            return "US30"
+        if "TEC" in raw or "NAS" in raw:
+            return "USTEC"
+        return raw
+
+    def _get_symbol_min_equity(self, symbol: str) -> float:
+        base_symbol = self._normalize_symbol_key(symbol)
+        value = self.min_equity_by_symbol.get(base_symbol)
+        if value is None:
+            return 0.0
+        try:
+            return float(value)
+        except Exception:
+            return 0.0
 
     def risk_gate(self, signal: dict, account_state: dict, market_state: dict,
                   opus_status=None, current_session: str = "UNKNOWN",
@@ -85,10 +117,13 @@ class RiskEngine:
                 reasons.append(f"🛡️ [STRICT] XAU Limit: Max 1 open position allowed (Current: {pos_count})")
                 allowed = False
 
-        # 👑 [INSTITUTIONAL] XAU Equity Guard: Block Gold if equity < $150
-        if "XAU" in symbol.upper() and account_state.get('equity', 0) < 150:
+        # 👑 [INSTITUTIONAL] Per-symbol equity guard from settings.json
+        # Example: risk_limits.min_equity_by_symbol.XAUUSD = 150
+        per_symbol_min_equity = self._get_symbol_min_equity(symbol)
+        if per_symbol_min_equity > 0 and account_state.get('equity', 0) < per_symbol_min_equity:
             reasons.append(
-                f"🛡️ [LOCKED] XAU requires $150 equity (Current: ${account_state.get('equity', 0):.2f})."
+                f"🛡️ [LOCKED] {self._normalize_symbol_key(symbol)} requires "
+                f"${per_symbol_min_equity:.0f} equity (Current: ${account_state.get('equity', 0):.2f})."
             )
             allowed = False
 

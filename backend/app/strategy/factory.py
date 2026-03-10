@@ -35,6 +35,13 @@ SHADOW_MIN_SIGNALS = 10       # Minimum shadow signals before trusting
 SHADOW_MIN_WIN_RATE = 55.0    # Minimum win_rate % to consider
 SHADOW_CACHE_TTL = 300        # Refresh every 5 minutes
 
+# Backtest routing production gate (env-overridable)
+ROUTING_MIN_TRADES = int(os.getenv("ROUTING_MIN_TRADES", "30"))
+ROUTING_MIN_WIN_RATE = float(os.getenv("ROUTING_MIN_WIN_RATE", "40"))
+ROUTING_MIN_PROFIT_FACTOR = float(os.getenv("ROUTING_MIN_PROFIT_FACTOR", "1.05"))
+ROUTING_MAX_DRAWDOWN_PCT = float(os.getenv("ROUTING_MAX_DRAWDOWN_PCT", "25"))
+ROUTING_MIN_SCORE = float(os.getenv("ROUTING_MIN_SCORE", "0"))
+
 
 # ====================================================================
 # Asset Class Detection (pure function — no hardcoding of strategies)
@@ -62,6 +69,13 @@ def detect_asset_class(symbol: str) -> str:
     return "*"
 
 
+def _normalize_strategy_name(name: str) -> str:
+    """Normalize strategy key for robust matching (vfinal == V-FINAL)."""
+    if not name:
+        return ""
+    return "".join(ch for ch in str(name).lower() if ch.isalnum())
+
+
 class StrategyFactory:
     """
     DB-Driven Strategy Factory — selects strategies from DB.
@@ -80,6 +94,7 @@ class StrategyFactory:
 
     def __init__(self) -> None:
         self._strategies: dict[str, BaseStrategy] = {}  # name → instance
+        self._strategy_aliases: dict[str, str] = {}      # normalized name -> canonical key
         self._default: str | None = None                 # default strategy name
         # DB-driven caches (loaded from SQLite)
         self._routing_cache: dict[str, dict] = {}       # "SYMBOL:REGIME" → routing row
@@ -317,6 +332,75 @@ class StrategyFactory:
     # Register — register a single strategy
     # ────────────────────────────────────────────────────────────────
 
+    def _resolve_strategy_name(self, name: str | None) -> str | None:
+        """Resolve strategy by exact key, lowercase key, or normalized alias."""
+        if not name:
+            return None
+        if name in self._strategies:
+            return name
+
+        lower_map = {k.lower(): k for k in self._strategies.keys()}
+        if str(name).lower() in lower_map:
+            return lower_map[str(name).lower()]
+
+        alias = self._strategy_aliases.get(_normalize_strategy_name(str(name)))
+        if alias in self._strategies:
+            return alias
+        return None
+
+    def _passes_routing_gate(self, routing: dict) -> tuple[bool, str]:
+        """
+        Production gate for backtest_routing rows.
+
+        Prevent weak/noisy routes from being used in live selection.
+        """
+        trades = int(routing.get("total_trades", 0) or 0)
+        win_rate = float(routing.get("win_rate", 0) or 0)
+        pf = float(routing.get("profit_factor", 0) or 0)
+        score = float(routing.get("score", 0) or 0)
+        max_dd = float(routing.get("max_drawdown_pct", 0) or 0)
+
+        if trades < ROUTING_MIN_TRADES:
+            return False, f"trades<{ROUTING_MIN_TRADES}"
+        if win_rate < ROUTING_MIN_WIN_RATE:
+            return False, f"wr<{ROUTING_MIN_WIN_RATE}"
+        if pf < ROUTING_MIN_PROFIT_FACTOR:
+            return False, f"pf<{ROUTING_MIN_PROFIT_FACTOR}"
+        if max_dd > 0 and max_dd > ROUTING_MAX_DRAWDOWN_PCT:
+            return False, f"dd>{ROUTING_MAX_DRAWDOWN_PCT}"
+        if score < ROUTING_MIN_SCORE:
+            return False, f"score<{ROUTING_MIN_SCORE}"
+        return True, ""
+
+    def _lookup_routing(self, symbol: str, regime_val: str) -> Optional[dict]:
+        """Case-insensitive routing lookup with symbol cleanup fallback."""
+        candidates = [
+            symbol,
+            symbol.upper(),
+            symbol.lower(),
+            symbol.rstrip("cmCM."),
+            symbol.rstrip("cmCM.").upper(),
+            symbol.rstrip("cmCM.").lower(),
+        ]
+        regimes = [regime_val, str(regime_val).upper(), str(regime_val).lower()]
+
+        for sym in candidates:
+            for reg in regimes:
+                row = self._routing_cache.get(f"{sym}:{reg}")
+                if row:
+                    return row
+
+        symbol_lower = str(symbol).lower()
+        regime_upper = str(regime_val).upper()
+        for key, row in self._routing_cache.items():
+            try:
+                sym_key, reg_key = key.split(":", 1)
+            except ValueError:
+                continue
+            if sym_key.lower() == symbol_lower and reg_key.upper() == regime_upper:
+                return row
+        return None
+
     def register(self, strategy: BaseStrategy) -> None:
         """
         Register a new strategy into the factory.
@@ -328,6 +412,7 @@ class StrategyFactory:
             - The first registered strategy becomes the default automatically
         """
         self._strategies[strategy.name] = strategy
+        self._strategy_aliases[_normalize_strategy_name(strategy.name)] = strategy.name
         logger.info("strategy_registered", extra={"strategy_name": strategy.name})
 
         # First registered strategy → set as default
@@ -340,18 +425,20 @@ class StrategyFactory:
 
     def _is_strategy_allowed(self, strategy_name: str, symbol: str) -> bool:
         """Check if a strategy is allowed to trade the given symbol based on asset class."""
+        resolved_name = self._resolve_strategy_name(strategy_name) or strategy_name
         asset_class = detect_asset_class(symbol)
         
         # Look up in registry cache
         allowed_asset = "*"
         for row in self._registry_cache:
-            if row.get("strategy_name") == strategy_name:
+            row_name = row.get("strategy_name")
+            if row_name == resolved_name or _normalize_strategy_name(row_name) == _normalize_strategy_name(resolved_name):
                 allowed_asset = row.get("asset_class", "*")
                 break
                 
         # Also check hardcoded fallback from the instance itself if available
         if allowed_asset == "*":
-            strat = self._strategies.get(strategy_name)
+            strat = self._strategies.get(resolved_name)
             if strat:
                 strat_asset = getattr(strat, "asset_class", getattr(strat, "regimes", "*"))
                 # Note: strategy implementations might not have `asset_class` attribute directly, 
@@ -378,15 +465,16 @@ class StrategyFactory:
         regime_val = regime.value if isinstance(regime, RegimeType) else str(regime)
 
         # --- 1. AI Brain recommendation ---
-        if brain_recommendation and brain_recommendation in self._strategies:
-            if self._is_strategy_allowed(brain_recommendation, symbol):
+        brain_name = self._resolve_strategy_name(brain_recommendation)
+        if brain_name:
+            if self._is_strategy_allowed(brain_name, symbol):
                 logger.info("strategy_selected_by_brain", extra={
-                    "symbol": symbol, "strategy": brain_recommendation,
+                    "symbol": symbol, "strategy": brain_name,
                 })
-                return self._strategies[brain_recommendation]
+                return self._strategies[brain_name]
             else:
                 logger.warning("brain_strategy_asset_mismatch", extra={
-                    "symbol": symbol, "brain_strategy": brain_recommendation,
+                    "symbol": symbol, "brain_strategy": brain_name,
                     "reason": "Asset class mismatch"
                 })
 
@@ -395,7 +483,7 @@ class StrategyFactory:
         shadow_key = f"{symbol}:{regime_val}"
         shadow = self._shadow_routing.get(shadow_key)
         if shadow:
-            strat_name = shadow.get("strategy", "")
+            strat_name = self._resolve_strategy_name(shadow.get("strategy", ""))
             if strat_name in self._strategies:
                 if self._is_strategy_allowed(strat_name, symbol):
                     logger.info("strategy_selected_by_shadow", extra={
@@ -412,24 +500,31 @@ class StrategyFactory:
 
         # --- 2. Backtest routing DB (proven performance) ---
         # Try exact (symbol, regime)
-        routing_key = f"{symbol}:{regime_val}"
-        routing = self._routing_cache.get(routing_key)
-
-        # Try with cleaned symbol (e.g., XAUUSDc → XAUUSDc, XAUUSD)
-        if not routing:
-            clean_sym = symbol.rstrip("cmCM.")
-            routing_key_clean = f"{clean_sym}:{regime_val}"
-            routing = self._routing_cache.get(routing_key_clean)
+        routing = self._lookup_routing(symbol, regime_val)
 
         if routing:
-            strat_name = routing.get("strategy", "")
-            if strat_name in self._strategies:
+            eligible, gate_reason = self._passes_routing_gate(routing)
+            if not eligible:
+                logger.info("routing_rejected_by_gate", extra={
+                    "symbol": symbol, "regime": regime_val,
+                    "raw_strategy": routing.get("strategy", ""),
+                    "reason": gate_reason,
+                    "trades": routing.get("total_trades", 0),
+                    "wr": routing.get("win_rate", 0),
+                    "pf": routing.get("profit_factor", 0),
+                    "max_dd": routing.get("max_drawdown_pct", 0),
+                    "score": routing.get("score", 0),
+                })
+            strat_name = self._resolve_strategy_name(routing.get("strategy", ""))
+            if eligible and strat_name in self._strategies:
                 if self._is_strategy_allowed(strat_name, symbol):
                     logger.info("strategy_selected_by_routing", extra={
                         "symbol": symbol, "regime": regime_val,
                         "strategy": strat_name,
                         "score": routing.get("score", 0),
                         "win_rate": routing.get("win_rate", 0),
+                        "profit_factor": routing.get("profit_factor", 0),
+                        "max_drawdown_pct": routing.get("max_drawdown_pct", 0),
                     })
                     return self._strategies[strat_name]
                 else:
@@ -467,7 +562,7 @@ class StrategyFactory:
         Registry is sorted by priority DESC.
         """
         for row in self._registry_cache:
-            strat_name = row.get("strategy_name", "")
+            strat_name = self._resolve_strategy_name(row.get("strategy_name", ""))
             if strat_name not in self._strategies:
                 continue
 
@@ -485,7 +580,7 @@ class StrategyFactory:
 
         # Fallback: try any strategy for this asset class (ignore regime)
         for row in self._registry_cache:
-            strat_name = row.get("strategy_name", "")
+            strat_name = self._resolve_strategy_name(row.get("strategy_name", ""))
             if strat_name not in self._strategies:
                 continue
             row_asset = row.get("asset_class", "*")

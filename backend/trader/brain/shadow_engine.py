@@ -1,5 +1,6 @@
 import logging
 import json
+import time
 import pandas as pd
 from datetime import datetime
 from backend.trader.storage.sqlite_db import db
@@ -13,6 +14,9 @@ class ShadowEngine:
     """
     def __init__(self):
         self.pending_cache = {} # symbol -> list of shadow trades
+        self._db_retry_after_ts = 0.0
+        self._last_error_log_ts = 0.0
+        self._last_error_text = ""
 
     def capture_practice_signal(self, signal: dict, df: pd.DataFrame, context: dict = None, events: list = None):
         """
@@ -61,6 +65,10 @@ class ShadowEngine:
         Checks all pending shadow trades for a symbol.
         Updates outcome if TP or SL is hit.
         """
+        now_ts = time.time()
+        if now_ts < self._db_retry_after_ts:
+            return
+
         try:
             pending = db.get_pending_shadow_trades(symbol)
             if not pending:
@@ -98,6 +106,15 @@ class ShadowEngine:
                     logger.info(f"  🎓 [SHADOW] Experience Recorded: {symbol} {color}{status}\033[0m | ID: {tid} | R: {pnl_r:.2f}")
 
         except Exception as e:
-            logger.error(f"Error tracking shadow experience: {e}")
+            err_txt = str(e)
+            lower_err = err_txt.lower()
+            if "disk i/o error" in lower_err or "database is locked" in lower_err:
+                # Back off temporarily to avoid log floods and repeated failing I/O.
+                self._db_retry_after_ts = now_ts + 60.0
+
+            if err_txt != self._last_error_text or (now_ts - self._last_error_log_ts) >= 60.0:
+                logger.error(f"Error tracking shadow experience: {e}")
+                self._last_error_text = err_txt
+                self._last_error_log_ts = now_ts
 
 shadow_engine = ShadowEngine()

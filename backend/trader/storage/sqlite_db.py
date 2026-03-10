@@ -7,8 +7,18 @@ class DataStore:
     def __init__(self, db_path="d:/VibeCode/Trade/trader/data/opus.db"):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=10.0)
+        self._configure_connection()
         self.create_schema()
+
+    def _configure_connection(self):
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute("PRAGMA busy_timeout = 10000")
+            cursor.execute("PRAGMA journal_mode = WAL")
+            cursor.execute("PRAGMA synchronous = NORMAL")
+        finally:
+            cursor.close()
 
     def create_schema(self):
         cursor = self.conn.cursor()
@@ -102,6 +112,51 @@ class DataStore:
                 updated_at TEXT,
                 PRIMARY KEY(day, symbol)
             )
+        ''')
+
+        # Backtest runtime overrides (latest run + ranked TF picks per symbol)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS backtest_tf_override_runs (
+                run_id TEXT PRIMARY KEY,
+                engine TEXT NOT NULL,
+                days INTEGER DEFAULT 360,
+                equity REAL DEFAULT 0.0,
+                lookback INTEGER DEFAULT 100,
+                hold_bars INTEGER DEFAULT 50,
+                min_trades INTEGER DEFAULT 5,
+                max_bars_per_run INTEGER DEFAULT 5000,
+                status TEXT DEFAULT 'RUNNING',
+                total_rows INTEGER DEFAULT 0,
+                notes TEXT DEFAULT '',
+                started_at TEXT NOT NULL,
+                finished_at TEXT
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS backtest_tf_overrides (
+                run_id TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                timeframe TEXT NOT NULL,
+                rank INTEGER DEFAULT 0,
+                score REAL DEFAULT 0.0,
+                trades INTEGER DEFAULT 0,
+                win_rate REAL DEFAULT 0.0,
+                profit_factor REAL DEFAULT 0.0,
+                net_pnl REAL DEFAULT 0.0,
+                max_dd REAL DEFAULT 0.0,
+                engine TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(run_id, symbol, timeframe)
+            )
+        ''')
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_bt_override_run_sym_rank
+            ON backtest_tf_overrides(run_id, symbol, rank)
+        ''')
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_bt_override_run_updated
+            ON backtest_tf_override_runs(status, finished_at, started_at)
         ''')
         
         # Signals
@@ -425,6 +480,398 @@ class DataStore:
         deleted = int(cursor.rowcount or 0)
         self.conn.commit()
         return deleted
+
+    def upsert_backtest_override_run(
+        self,
+        run_id: str,
+        *,
+        engine: str,
+        days: int,
+        equity: float,
+        lookback: int,
+        hold_bars: int,
+        min_trades: int,
+        max_bars_per_run: int,
+        status: str = "RUNNING",
+        notes: str = "",
+    ) -> None:
+        cursor = self.conn.cursor()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        cursor.execute(
+            '''
+            INSERT INTO backtest_tf_override_runs (
+                run_id, engine, days, equity, lookback, hold_bars,
+                min_trades, max_bars_per_run, status, total_rows, notes,
+                started_at, finished_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, NULL)
+            ON CONFLICT(run_id) DO UPDATE SET
+                engine = excluded.engine,
+                days = excluded.days,
+                equity = excluded.equity,
+                lookback = excluded.lookback,
+                hold_bars = excluded.hold_bars,
+                min_trades = excluded.min_trades,
+                max_bars_per_run = excluded.max_bars_per_run,
+                status = excluded.status,
+                notes = excluded.notes
+            ''',
+            (
+                str(run_id),
+                str(engine),
+                int(max(1, days)),
+                float(equity),
+                int(max(1, lookback)),
+                int(max(1, hold_bars)),
+                int(max(0, min_trades)),
+                int(max(0, max_bars_per_run)),
+                str(status or "RUNNING").upper(),
+                str(notes or ""),
+                now_iso,
+            ),
+        )
+        self.conn.commit()
+
+    def upsert_backtest_tf_overrides(
+        self,
+        run_id: str,
+        rows: List[Dict],
+        *,
+        replace_run_rows: bool = True,
+    ) -> int:
+        cursor = self.conn.cursor()
+        if replace_run_rows:
+            cursor.execute(
+                "DELETE FROM backtest_tf_overrides WHERE run_id = ?",
+                (str(run_id),),
+            )
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        payload = []
+        for row in rows or []:
+            symbol = str(row.get("symbol", "")).upper().strip()
+            timeframe = str(row.get("timeframe", "")).upper().strip()
+            if not symbol or not timeframe:
+                continue
+            payload.append(
+                (
+                    str(run_id),
+                    symbol,
+                    timeframe,
+                    int(row.get("rank", 0) or 0),
+                    float(row.get("score", 0.0) or 0.0),
+                    int(row.get("total_trades", row.get("trades", 0)) or 0),
+                    float(row.get("win_rate", 0.0) or 0.0),
+                    float(row.get("profit_factor", 0.0) or 0.0),
+                    float(row.get("net_pnl", 0.0) or 0.0),
+                    float(row.get("max_dd", 0.0) or 0.0),
+                    str(row.get("engine", "trader")).lower(),
+                    now_iso,
+                )
+            )
+
+        cursor.executemany(
+            '''
+            INSERT INTO backtest_tf_overrides (
+                run_id, symbol, timeframe, rank, score, trades,
+                win_rate, profit_factor, net_pnl, max_dd, engine, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(run_id, symbol, timeframe) DO UPDATE SET
+                rank = excluded.rank,
+                score = excluded.score,
+                trades = excluded.trades,
+                win_rate = excluded.win_rate,
+                profit_factor = excluded.profit_factor,
+                net_pnl = excluded.net_pnl,
+                max_dd = excluded.max_dd,
+                engine = excluded.engine,
+                updated_at = excluded.updated_at
+            ''',
+            payload,
+        )
+        self.conn.commit()
+        return len(payload)
+
+    def complete_backtest_override_run(
+        self,
+        run_id: str,
+        *,
+        status: str = "COMPLETED",
+        total_rows: int = 0,
+        notes: str = "",
+    ) -> None:
+        cursor = self.conn.cursor()
+        cursor.execute(
+            '''
+            UPDATE backtest_tf_override_runs
+            SET status = ?,
+                total_rows = ?,
+                notes = CASE WHEN ? = '' THEN notes ELSE ? END,
+                finished_at = ?
+            WHERE run_id = ?
+            ''',
+            (
+                str(status or "COMPLETED").upper(),
+                int(max(0, total_rows)),
+                str(notes or ""),
+                str(notes or ""),
+                datetime.now(timezone.utc).isoformat(),
+                str(run_id),
+            ),
+        )
+        self.conn.commit()
+
+    def get_backtest_override_run(self, run_id: str) -> Optional[Dict]:
+        cursor = self.conn.cursor()
+        cursor.execute(
+            '''
+            SELECT
+                run_id, engine, days, equity, lookback, hold_bars, min_trades,
+                max_bars_per_run, status, total_rows, notes, started_at, finished_at
+            FROM backtest_tf_override_runs
+            WHERE run_id = ?
+            ''',
+            (str(run_id),),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "run_id": row[0],
+            "engine": row[1],
+            "days": int(row[2] or 0),
+            "equity": float(row[3] or 0.0),
+            "lookback": int(row[4] or 0),
+            "hold_bars": int(row[5] or 0),
+            "min_trades": int(row[6] or 0),
+            "max_bars_per_run": int(row[7] or 0),
+            "status": row[8],
+            "total_rows": int(row[9] or 0),
+            "notes": row[10] or "",
+            "started_at": row[11],
+            "finished_at": row[12],
+        }
+
+    def get_latest_backtest_override_run(self, status: str = "COMPLETED") -> Optional[Dict]:
+        cursor = self.conn.cursor()
+        params: tuple = ()
+        where = ""
+        if status:
+            where = "WHERE status = ?"
+            params = (str(status).upper(),)
+
+        cursor.execute(
+            f'''
+            SELECT
+                run_id, engine, days, equity, lookback, hold_bars, min_trades,
+                max_bars_per_run, status, total_rows, notes, started_at, finished_at
+            FROM backtest_tf_override_runs
+            {where}
+            ORDER BY COALESCE(finished_at, started_at) DESC
+            LIMIT 1
+            ''',
+            params,
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "run_id": row[0],
+            "engine": row[1],
+            "days": int(row[2] or 0),
+            "equity": float(row[3] or 0.0),
+            "lookback": int(row[4] or 0),
+            "hold_bars": int(row[5] or 0),
+            "min_trades": int(row[6] or 0),
+            "max_bars_per_run": int(row[7] or 0),
+            "status": row[8],
+            "total_rows": int(row[9] or 0),
+            "notes": row[10] or "",
+            "started_at": row[11],
+            "finished_at": row[12],
+        }
+
+    def get_recent_backtest_override_runs(self, status: str = "COMPLETED", limit: int = 10) -> List[Dict]:
+        cursor = self.conn.cursor()
+        lim = max(1, int(limit))
+        params: tuple = (lim,)
+        where = ""
+        if status:
+            where = "WHERE status = ?"
+            params = (str(status).upper(), lim)
+
+        cursor.execute(
+            f'''
+            SELECT
+                run_id, engine, days, equity, lookback, hold_bars, min_trades,
+                max_bars_per_run, status, total_rows, notes, started_at, finished_at
+            FROM backtest_tf_override_runs
+            {where}
+            ORDER BY COALESCE(finished_at, started_at) DESC
+            LIMIT ?
+            ''',
+            params,
+        )
+        rows = cursor.fetchall()
+        out: List[Dict] = []
+        for row in rows:
+            out.append({
+                "run_id": row[0],
+                "engine": row[1],
+                "days": int(row[2] or 0),
+                "equity": float(row[3] or 0.0),
+                "lookback": int(row[4] or 0),
+                "hold_bars": int(row[5] or 0),
+                "min_trades": int(row[6] or 0),
+                "max_bars_per_run": int(row[7] or 0),
+                "status": row[8],
+                "total_rows": int(row[9] or 0),
+                "notes": row[10] or "",
+                "started_at": row[11],
+                "finished_at": row[12],
+            })
+        return out
+
+    def _get_backtest_tf_rows_for_run(
+        self,
+        run_id: str,
+        *,
+        symbol: Optional[str] = None,
+    ) -> List[Dict]:
+        cursor = self.conn.cursor()
+        params = [str(run_id)]
+        where_symbol = ""
+        if symbol:
+            where_symbol = "AND symbol = ?"
+            params.append(str(symbol).upper())
+
+        cursor.execute(
+            f'''
+            SELECT
+                run_id, symbol, timeframe, rank, score, trades, win_rate,
+                profit_factor, net_pnl, max_dd, engine, updated_at
+            FROM backtest_tf_overrides
+            WHERE run_id = ?
+              {where_symbol}
+            ORDER BY symbol ASC, rank ASC, score DESC
+            ''',
+            tuple(params),
+        )
+        rows = []
+        for row in cursor.fetchall():
+            rows.append({
+                "run_id": row[0],
+                "symbol": row[1],
+                "timeframe": row[2],
+                "rank": int(row[3] or 0),
+                "score": float(row[4] or 0.0),
+                "trades": int(row[5] or 0),
+                "win_rate": float(row[6] or 0.0),
+                "profit_factor": float(row[7] or 0.0),
+                "net_pnl": float(row[8] or 0.0),
+                "max_dd": float(row[9] or 0.0),
+                "engine": (row[10] or "").lower(),
+                "updated_at": row[11],
+            })
+        return rows
+
+    def get_latest_backtest_tf_overrides(
+        self,
+        *,
+        symbol: Optional[str] = None,
+        top_k: int = 2,
+        min_trades: int = 5,
+        require_positive_score: bool = True,
+        min_win_rate: float = 0.0,
+        min_profit_factor: float = 0.0,
+        max_drawdown_pct: float = 999.0,
+        require_positive_pnl: bool = False,
+        search_completed_runs: int = 10,
+    ) -> Dict:
+        run_candidates = self.get_recent_backtest_override_runs(
+            status="COMPLETED",
+            limit=max(1, int(search_completed_runs)),
+        )
+        if not run_candidates:
+            return {"run": None, "rows": [], "by_symbol": {}}
+
+        selected_run = run_candidates[0]
+        rows: List[Dict] = []
+        checked = 0
+        for run in run_candidates:
+            checked += 1
+            candidate_rows = self._get_backtest_tf_rows_for_run(run["run_id"], symbol=symbol)
+            filtered = []
+            for rec in candidate_rows:
+                if rec["trades"] < int(max(0, min_trades)):
+                    continue
+                if require_positive_score and rec["score"] <= 0:
+                    continue
+                if float(rec["win_rate"] or 0.0) < float(min_win_rate):
+                    continue
+                if float(rec["profit_factor"] or 0.0) < float(min_profit_factor):
+                    continue
+                if float(rec["max_dd"] or 999.0) > float(max_drawdown_pct):
+                    continue
+                if require_positive_pnl and float(rec["net_pnl"] or 0.0) <= 0.0:
+                    continue
+                filtered.append(rec)
+            if filtered:
+                selected_run = run
+                rows = filtered
+                break
+
+        if not rows:
+            rows = []
+
+        by_symbol: Dict[str, List[Dict]] = {}
+        for rec in rows:
+            sym = rec["symbol"]
+            by_symbol.setdefault(sym, []).append(rec)
+
+        flat_top = []
+        cap = max(1, int(top_k))
+        for sym, sym_rows in by_symbol.items():
+            sorted_rows = sorted(
+                sym_rows,
+                key=lambda x: (x.get("rank", 9999), -x.get("score", 0.0)),
+            )[:cap]
+            by_symbol[sym] = sorted_rows
+            flat_top.extend(sorted_rows)
+
+        return {
+            "run": selected_run,
+            "rows": flat_top,
+            "by_symbol": by_symbol,
+            "checked_runs": checked,
+        }
+
+    def prune_backtest_override_runs(self, retention_days: int = 180) -> int:
+        cursor = self.conn.cursor()
+        days = max(1, int(retention_days))
+        cursor.execute(
+            '''
+            SELECT run_id
+            FROM backtest_tf_override_runs
+            WHERE date(COALESCE(finished_at, started_at)) < date('now', ?)
+            ''',
+            (f"-{days} days",),
+        )
+        old_run_ids = [str(r[0]) for r in cursor.fetchall()]
+        deleted_rows = 0
+        if old_run_ids:
+            qmarks = ",".join(["?"] * len(old_run_ids))
+            cursor.execute(
+                f"DELETE FROM backtest_tf_overrides WHERE run_id IN ({qmarks})",
+                tuple(old_run_ids),
+            )
+            deleted_rows += int(cursor.rowcount or 0)
+            cursor.execute(
+                f"DELETE FROM backtest_tf_override_runs WHERE run_id IN ({qmarks})",
+                tuple(old_run_ids),
+            )
+            deleted_rows += int(cursor.rowcount or 0)
+            self.conn.commit()
+        return deleted_rows
 
     def record_shadow_entry(self, signal: dict, features: str):
         """Record a virtual trade for practice."""

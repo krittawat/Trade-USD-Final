@@ -129,3 +129,48 @@ async def get_symbol_tuner_latest(
             "snapshots": [],
             "error": str(e),
         }
+
+
+@router.get("/analytics/backtest-overrides/latest")
+async def get_backtest_overrides_latest(
+    symbol: str = Query(default="", description="filter by symbol (e.g. XAUUSD)"),
+    min_trades: int = Query(default=5, ge=0, le=1000, description="minimum trades filter"),
+):
+    """
+    ดึง TF override ล่าสุดจาก backtest_tf_overrides (top-2 per symbol).
+    """
+    try:
+        from backend.trader.data.mapper import mapper
+        from backend.trader.storage.sqlite_db import db as trader_db
+
+        sym = (symbol or "").strip()
+        std_symbol = mapper.to_standard(sym) if sym else ""
+        payload = trader_db.get_latest_backtest_tf_overrides(
+            symbol=std_symbol or None,
+            top_k=2,
+            min_trades=max(0, int(min_trades)),
+            require_positive_score=True,
+        )
+        run = payload.get("run")
+        rows = payload.get("rows", []) or []
+        by_symbol = payload.get("by_symbol", {}) or {}
+
+        return {
+            "run": run,
+            "symbol": std_symbol or "ALL",
+            "min_trades": int(min_trades),
+            "count": len(rows),
+            "overrides": rows,
+            "by_symbol": by_symbol,
+        }
+    except Exception as e:
+        logger.error("backtest_override_analytics_error", extra={"error": str(e)})
+        return {
+            "run": None,
+            "symbol": (symbol or "ALL"),
+            "min_trades": int(min_trades),
+            "count": 0,
+            "overrides": [],
+            "by_symbol": {},
+            "error": str(e),
+        }

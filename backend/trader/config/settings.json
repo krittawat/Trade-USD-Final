@@ -21,6 +21,9 @@
         "atr_deviation_cooldown_threshold": 2.2,
         "cooldown_minutes": 15,
         "min_equity_threshold": 10.0,
+        "min_equity_by_symbol": {
+            "XAUUSD": 120.0
+        },
         "max_daily_trades_crypto": 5,
         "max_positions_per_symbol": {
             "BTCUSD": 3,
@@ -93,6 +96,7 @@
         "enable_btc_oracle": false,
         "enable_fvg_logic": true,
         "enable_aether_flow": true,
+        "enable_indicator_confluence": true,
         "enable_indices_ultimate": false,
         "min_confidence_trade": 0.75,
         "min_liquidity_event_score": 0.80,
@@ -117,6 +121,15 @@
         },
         "counter_trend": {
             "cooldown_bars": 5
+        },
+        "indicator_confluence": {
+            "ema_fast_period": 9,
+            "ema_mid_period": 21,
+            "ema_slow_period": 50,
+            "sl_atr_mult": 1.2,
+            "tp_rr": 1.8,
+            "min_score": 6,
+            "min_volume_ratio": 1.0
         },
         "allow_counter_trend_critical": true
     },

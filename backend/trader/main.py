@@ -4,6 +4,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import math
+from copy import deepcopy
 
 # Ensure project root is on sys.path so `backend.trader.*` imports work from any CWD
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -20,7 +21,7 @@ from backend.trader.features.divergence import detect_rsi_divergence
 from backend.trader.features.candle_patterns import detect_candle_patterns, get_pattern_signal
 from backend.trader.regime.classifier import classify_regime
 from backend.trader.liquidity.detector import detect_liquidity_events
-from backend.trader.strategy.selector import select_and_generate_signal
+from backend.trader.strategy.selector import select_and_generate_signal, reset_cooldown
 from backend.trader.risk.gate import risk_engine, _cooldown_until
 from backend.trader.risk.opus_governor import governor
 from backend.trader.execution.mt5_order import Executor
@@ -45,7 +46,8 @@ with open("d:/VibeCode/Trade/backend/trader/config/settings.json") as _f:
     _SETTINGS = _json.load(_f)
 
 CONFIG = {
-    "symbols": ["XAUUSDm", "BTCUSDm", "USOILm", "US30m", "USTECm", "EURUSDm", "GBPUSDm", "USDJPYm"],
+    # Focus universe for production growth: XAU, BTC, USOIL, USTEC, US30
+    "symbols": ["XAUUSDm", "BTCUSDm", "USOILm", "US30m", "USTECm"],
     "shadow_symbols": ["XAGUSDm"],
     "timeframes": ["M3", "M5", "M6", "M12", "M15", "M30", "H1", "H2", "H4", "D1"],
     "symbol_timeframes": {
@@ -54,10 +56,7 @@ CONFIG = {
         "XAUUSDm": ["M3", "M5", "M6", "M12", "M15", "M30", "H1", "H2", "H4", "D1"],
         "XAGUSDm": ["M3", "M5", "M6", "M12", "M15", "M30", "H1", "H2", "H4", "D1"],
         "US30m": ["M3", "M5", "M6", "M12", "M15", "M30", "H1", "H2", "H4", "D1"],
-        "USTECm": ["M3", "M5", "M6", "M12", "M15", "M30", "H1", "H2", "H4", "D1"],
-        "EURUSDm": ["M3", "M5", "M6", "M12", "M15", "M30", "H1", "H2", "H4", "D1"],
-        "GBPUSDm": ["M3", "M5", "M6", "M12", "M15", "M30", "H1", "H2", "H4", "D1"],
-        "USDJPYm": ["M3", "M5", "M6", "M12", "M15", "M30", "H1", "H2", "H4", "D1"]
+        "USTECm": ["M3", "M5", "M6", "M12", "M15", "M30", "H1", "H2", "H4", "D1"]
     },
     # Entry TF per asset to reduce noise/over-trading.
     "execution_timeframes": {
@@ -66,16 +65,14 @@ CONFIG = {
         "BTCUSDm": ["M5", "M15", "H1"],
         "USOILm": ["M5", "M15", "H1"],
         "US30m": ["M5", "M15", "H1"],
-        "USTECm": ["M5", "M15", "H1"],
-        "EURUSDm": ["M12", "M15", "H1"],
-        "GBPUSDm": ["M12", "M15", "H1"],
-        "USDJPYm": ["M12", "M15", "H1"]
+        "USTECm": ["M5", "M15", "H1"]
     },
     "safety_cap": {
-        "equity_threshold": 300.0,
+        "equity_threshold": 120.0,
         "max_lot": 0.01
     }
 }
+DEFAULT_EXECUTION_TIMEFRAMES = deepcopy(CONFIG.get("execution_timeframes", {}))
 
 
 
@@ -129,7 +126,171 @@ def parse_args():
     parser.add_argument("--mode", default="dry_run", choices=["live", "dry_run", "backtest"])
     parser.add_argument("--symbol", default="XAUUSD")
     parser.add_argument("--reset-pnl", action="store_true", help="Reset daily PnL counter to 0")
+    parser.add_argument(
+        "--use-backtest-overrides",
+        dest="use_backtest_overrides",
+        action="store_true",
+        default=None,
+        help="Apply latest DB-backed top-2 TF overrides to runtime execution_timeframes",
+    )
+    parser.add_argument(
+        "--no-backtest-overrides",
+        dest="use_backtest_overrides",
+        action="store_false",
+        help="Disable DB-backed TF overrides and use default execution_timeframes",
+    )
+    parser.add_argument(
+        "--override-min-trades",
+        type=int,
+        default=3,
+        help="Minimum trades filter when applying backtest TF overrides",
+    )
+    parser.add_argument(
+        "--override-min-win-rate",
+        type=float,
+        default=35.0,
+        help="Minimum win rate (%%) filter when applying backtest TF overrides",
+    )
+    parser.add_argument(
+        "--override-min-pf",
+        type=float,
+        default=1.05,
+        help="Minimum profit factor filter when applying backtest TF overrides",
+    )
+    parser.add_argument(
+        "--override-max-dd",
+        type=float,
+        default=25.0,
+        help="Maximum drawdown (%%) filter when applying backtest TF overrides",
+    )
+    parser.add_argument(
+        "--override-search-completed-runs",
+        type=int,
+        default=30,
+        help="How many recent COMPLETED backtest runs to scan for usable TF overrides",
+    )
+    parser.add_argument(
+        "--override-require-positive-score",
+        dest="override_require_positive_score",
+        action="store_true",
+        default=None,
+        help="Require override score > 0 when selecting TF overrides",
+    )
+    parser.add_argument(
+        "--override-allow-nonpositive-score",
+        dest="override_require_positive_score",
+        action="store_false",
+        help="Allow score <= 0 when selecting TF overrides (temporary relaxed mode)",
+    )
+    parser.add_argument(
+        "--override-require-positive-pnl",
+        dest="override_require_positive_pnl",
+        action="store_true",
+        default=True,
+        help="Require net_pnl > 0 when selecting TF overrides",
+    )
+    parser.add_argument(
+        "--override-allow-nonpositive-pnl",
+        dest="override_require_positive_pnl",
+        action="store_false",
+        help="Allow net_pnl <= 0 when selecting TF overrides",
+    )
     return parser.parse_args()
+
+
+def _resolve_override_toggle(args) -> bool:
+    if args.use_backtest_overrides is not None:
+        return bool(args.use_backtest_overrides)
+    return args.mode in {"live", "dry_run"}
+
+
+def _resolve_override_require_positive_score(args) -> bool:
+    if args.override_require_positive_score is not None:
+        return bool(args.override_require_positive_score)
+    return True
+
+
+def _apply_backtest_tf_overrides(
+    *,
+    enabled: bool,
+    min_trades: int = 3,
+    min_win_rate: float = 35.0,
+    min_pf: float = 1.05,
+    max_dd: float = 25.0,
+    require_positive_pnl: bool = True,
+    search_completed_runs: int = 30,
+    require_positive_score: bool = True,
+) -> None:
+    from backend.trader.data.mapper import mapper
+
+    CONFIG["execution_timeframes"] = deepcopy(DEFAULT_EXECUTION_TIMEFRAMES)
+
+    if not enabled:
+        logger.info("  📚 Backtest TF overrides: disabled (using default execution_timeframes)")
+        return
+
+    payload = db.get_latest_backtest_tf_overrides(
+        top_k=2,
+        min_trades=max(0, int(min_trades)),
+        min_win_rate=max(0.0, float(min_win_rate)),
+        min_profit_factor=max(0.0, float(min_pf)),
+        max_drawdown_pct=max(0.0, float(max_dd)),
+        require_positive_pnl=bool(require_positive_pnl),
+        require_positive_score=bool(require_positive_score),
+        search_completed_runs=max(1, int(search_completed_runs)),
+    )
+    run_meta = payload.get("run")
+    by_symbol = payload.get("by_symbol", {}) or {}
+    checked_runs = int(payload.get("checked_runs", 0) or 0)
+
+    if not run_meta:
+        logger.info("  📚 Backtest TF overrides: no completed run found, using defaults")
+        return
+
+    overridden = []
+    fallback = []
+    for broker_symbol, default_tfs in DEFAULT_EXECUTION_TIMEFRAMES.items():
+        std_symbol = mapper.to_standard(broker_symbol).upper()
+        symbol_keys = [std_symbol, broker_symbol.upper()]
+        if std_symbol.endswith("M"):
+            symbol_keys.append(std_symbol[:-1])
+        if broker_symbol.upper().endswith("M"):
+            symbol_keys.append(broker_symbol.upper()[:-1])
+        rows = []
+        for sym_key in symbol_keys:
+            rows = by_symbol.get(sym_key, [])
+            if rows:
+                break
+        chosen_tfs = []
+        for row in rows:
+            tf = str(row.get("timeframe", "")).upper()
+            if tf and tf not in chosen_tfs:
+                chosen_tfs.append(tf)
+            if len(chosen_tfs) >= 2:
+                break
+
+        if chosen_tfs:
+            CONFIG["execution_timeframes"][broker_symbol] = chosen_tfs
+            overridden.append((broker_symbol, chosen_tfs, rows))
+        else:
+            CONFIG["execution_timeframes"][broker_symbol] = list(default_tfs)
+            fallback.append((broker_symbol, list(default_tfs)))
+
+    logger.info(
+        f"  📚 Backtest TF overrides run={run_meta.get('run_id')} "
+        f"engine={run_meta.get('engine')} overridden={len(overridden)} fallback={len(fallback)}"
+        f"{f' checked={checked_runs}' if checked_runs else ''}"
+        f" filters[min_trades={max(0, int(min_trades))},wr>={max(0.0, float(min_win_rate)):.1f},"
+        f"pf>={max(0.0, float(min_pf)):.2f},dd<={max(0.0, float(max_dd)):.1f},"
+        f"pnl>{'0' if require_positive_pnl else 'ANY'},score>{'0' if require_positive_score else 'ANY'}]"
+    )
+    if not overridden:
+        logger.info("    ℹ️ No qualified TF rows met filters (trades/wr/pf/dd/pnl/score); defaults retained.")
+    for sym, tfs, rows in overridden:
+        src = ",".join([f"{r.get('engine')}:{r.get('score', 0):.2f}" for r in rows[:2]])
+        logger.info(f"    ✅ {sym} -> {','.join(tfs)} ({src})")
+    for sym, tfs in fallback:
+        logger.info(f"    ↩ {sym} -> {','.join(tfs)} (default)")
 
 def get_real_account_state(mt5_module, start_time: datetime = APP_START_TIME) -> dict:
     info = mt5_module.account_info()
@@ -320,13 +481,19 @@ def tick_cycle(mode: str, symbol: str, timeframe_str: str, executor: Executor, c
         if cycle_cache is None:
             cycle_cache = {}
         htf_cache = cycle_cache.setdefault("htf_bias", {})
+        raw_rates_cache = cycle_cache.setdefault("raw_rates", {})
 
         tf = TIMEFRAME_MAP.get(timeframe_str, mt5.TIMEFRAME_M5)
         broker_symbol = mapper.to_broker(symbol)
         is_shadow = symbol in CONFIG.get("shadow_symbols", [])
         display_sym = f"{f'{C.CYAN}[SHADOW]{C.RST} ' if is_shadow else ''}{_sym(symbol)}({timeframe_str})"
 
-        df = fetcher.get_rates(symbol, tf, 400)
+        cache_key = (symbol, timeframe_str)
+        df = raw_rates_cache.get(cache_key)
+        if df is None:
+            df = fetcher.get_rates(symbol, tf, 400)
+            if df is not None:
+                raw_rates_cache[cache_key] = df
         if df is None or len(df) < 80: return
 
         work_df = df.iloc[:-1].copy()
@@ -373,7 +540,17 @@ def tick_cycle(mode: str, symbol: str, timeframe_str: str, executor: Executor, c
             manage_pending_orders(symbol, work_df, timeframe_str)
 
         pat = get_pattern_signal(latest_features)
-        logger.info(f"{display_sym:<25} {C.BOLD}{latest['close']:>10.2f}{C.RST} │ {_regime_badge(regime_res['regime'])} │ {_vol_badge(work_df.iloc[-1])} │ Pwr {work_df.iloc[-1].get('net_power', 0):+.1f}{f' │ Liq:{len(events)}' if events else ''}{f' 🕯️{','.join(pat['patterns'])}' if pat['patterns'] else ''}")
+        rsi_now = _safe_float(latest_features.get("rsi", 50.0), 50.0)
+        macd_hist_now = _safe_float(latest_features.get("macd_hist", 0.0), 0.0)
+        momentum_now = _safe_float(latest_features.get("momentum_14", 100.0), 100.0)
+        logger.info(
+            f"{display_sym:<25} {C.BOLD}{latest['close']:>10.2f}{C.RST} │ {_regime_badge(regime_res['regime'])} │ "
+            f"EMA {_get_trend_icon(work_df)} │ {_vol_badge(work_df.iloc[-1])} │ "
+            f"Pwr {work_df.iloc[-1].get('net_power_25', work_df.iloc[-1].get('net_power', 0)):+.1f} │ "
+            f"RSI {rsi_now:>5.1f} │ MACD {macd_hist_now:+.4f} │ MOM {momentum_now:>6.2f}"
+            f"{f' │ Liq:{len(events)}' if events else ''}"
+            f"{f' 🕯️{','.join(pat['patterns'])}' if pat['patterns'] else ''}"
+        )
 
         # ─── 6. HTF Trend Alignment from Context ─────────────
         # Prioritize H1 EMA 200 for institutional trend filter (cached once/symbol/cycle)
@@ -564,6 +741,18 @@ def _print_header(cycle: int, mode: str, opus_status=None, news_blocked: bool = 
 
 def main():
     args = parse_args()
+    use_overrides = _resolve_override_toggle(args)
+    require_positive_score = _resolve_override_require_positive_score(args)
+    _apply_backtest_tf_overrides(
+        enabled=use_overrides,
+        min_trades=args.override_min_trades,
+        min_win_rate=args.override_min_win_rate,
+        min_pf=args.override_min_pf,
+        max_dd=args.override_max_dd,
+        require_positive_pnl=bool(args.override_require_positive_pnl),
+        search_completed_runs=args.override_search_completed_runs,
+        require_positive_score=require_positive_score,
+    )
     DAILY_TARGET = governor.daily_target_usd
     _print_startup_header(args.mode, DAILY_TARGET)
     executor = Executor(mode=args.mode)
@@ -581,6 +770,7 @@ def main():
         import asyncio
         
         cycle, LAST_DEAL_TIME, LAST_NEWS_REFRESH = 0, datetime.now(), datetime.now() - timedelta(hours=7)
+        reset_cooldowns_applied = False
         try:
             while True:
                 cycle += 1
@@ -600,9 +790,12 @@ def main():
                 # If reset pnl, we also want to clear the global cooldowns to let it trade
                 if args.reset_pnl:
                     acct['session_reset'] = True
-                    acct['daily_pnl'] = pnl_session 
-                    _cooldown_until.clear()
-                    logger.info("🔄 [RESET] PnL Reset Active: Session PnL used, Global Cooldowns cleared.")
+                    acct['daily_pnl'] = pnl_session
+                    if not reset_cooldowns_applied:
+                        _cooldown_until.clear()
+                        reset_cooldown()
+                        reset_cooldowns_applied = True
+                        logger.info("🔄 [RESET] PnL Reset Active: Session PnL used, Cooldowns cleared (one-time).")
                 
                 opus = governor.compute_status(acct)
                 news_blocked = any(not news_filter.is_safe(s) for s in CONFIG["symbols"])
@@ -699,7 +892,7 @@ def main():
                     logger.debug(f"SMT refresh skipped: {_smt_err}")
 
                 # ─── SIGNAL GENERATION CYCLE ───
-                cycle_cache = {"htf_bias": {}}
+                cycle_cache = {"htf_bias": {}, "raw_rates": {}}
                 for symbol in CONFIG["symbols"] + CONFIG.get("shadow_symbols", []):
                     from backend.trader.data.mapper import mapper
                     broker_sym = mapper.to_broker(symbol)
@@ -710,10 +903,14 @@ def main():
                     for tf_str in symbol_tfs:
                         df_tf = fetcher.get_rates(symbol, TIMEFRAME_MAP.get(tf_str), 400)
                         if df_tf is not None:
-                            df_tf = add_volatility_features(df_tf)
-                            v_curr = int(df_tf['tick_volume'].iloc[-1]) if 'tick_volume' in df_tf.columns else 0
-                            v_avg = int(df_tf['tick_volume'].tail(20).mean()) if v_curr else 0
-                            trend_map.append(f"{tf_str}:{_get_trend_icon(df_tf)} {'HI:' if v_curr > v_avg*1.5 else 'LOW:' if v_curr < v_avg*0.5 else 'AVG:'}{v_curr}/{v_avg}")
+                            cycle_cache["raw_rates"][(symbol, tf_str)] = df_tf
+                            closed_df = df_tf.iloc[:-1].copy()
+                            if closed_df.empty:
+                                continue
+                            closed_df = add_volatility_features(closed_df)
+                            v_curr = int(closed_df['tick_volume'].iloc[-1]) if 'tick_volume' in closed_df.columns else 0
+                            v_avg = int(closed_df['tick_volume'].tail(20).mean()) if v_curr else 0
+                            trend_map.append(f"{tf_str}:EMA{_get_trend_icon(closed_df)} {'HI:' if v_curr > v_avg*1.5 else 'LOW:' if v_curr < v_avg*0.5 else 'AVG:'}{v_curr}/{v_avg}")
                     
                     logger.info(
                         f"  {f'{C.CYAN}[SHADOW]{C.RST} ' if symbol in CONFIG.get('shadow_symbols', []) else ''}"

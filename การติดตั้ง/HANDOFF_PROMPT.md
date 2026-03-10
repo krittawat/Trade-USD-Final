@@ -47,11 +47,11 @@ derb.darb — 4:37 PM
 
 สิ่งที่อัปเดต:
 
-✅ แก้ path ให้ถูกต้อง → trader/ (ไม่ใช่ backend/)
+✅ ตั้งค่า default path เป็น backend/trader/
 ✅ เพิ่ม Pipeline Flow ครบ 9 ขั้นตอน (Ingest → Feature → Regime → Liquidity → Pattern → Strategy → Risk → Execute → Position Mgmt)
 ✅ บันทึกผล Live Gate Test ล่าสุด (WR=20%, PF=0.37 — ❌ ยังไม่ผ่าน)
 ✅ จัดลำดับ TODO ตาม priority: 🔴 Critical / 🟡 Important / 🟢 Nice-to-have
-✅ แก้คำสั่งรันให้ใช้ python -m trader.main (module-based import)
+✅ แก้คำสั่งรันให้ใช้ python -m backend.trader.main (module-based import)
 ✅ เพิ่ม Risk Parameters จาก settings.json จริง
 ✅ เพิ่ม Signal Output Format
 Priority แรกที่ต้องทำ: ปรับปรุง Win Rate + Profit Factor ให้ผ่าน Live Gate (WR≥50%, PF≥1.3) ก่อนเปิด LIVE
@@ -100,22 +100,22 @@ Project path: d:\VibeCode\Trade
 สถาปัตยกรรมปัจจุบัน (2 มี.ค. 2026)
 ═══════════════════════════════════════════════════════════
 
-1. Engine: OPUS Trading Engine อยู่ใน trader/ (ไม่ใช่ backend/)
-   - backend/ คือ legacy code เก่า (ยังอยู่แต่ไม่ใช้งาน)
-   - trader/ คือตัวหลักที่ใช้รันจริง
-2. Entry point: python trader/main.py --mode live|dry_run|backtest
-3. DB: SQLite embedded — trader/data/opus.db
+1. Engine: OPUS Trading Engine อยู่ใน backend/trader/ (default)
+   - backend/app คือ API + orchestration layer ที่ใช้งานร่วมกัน
+   - backend/trader/ คือตัวหลักที่ใช้รันจริง
+2. Entry point: python -m backend.trader.main --mode live|dry_run|backtest
+3. DB: SQLite embedded — backend/trader/data/opus.db
 4. Account: Exness Cent (USC)
-5. Symbols: XAUUSDc, XAGUSDc, BTCUSDc (mapping ใน trader/data/mapper.py)
+5. Symbols: XAUUSDc, XAGUSDc, BTCUSDc (mapping ใน backend/trader/data/mapper.py)
 6. Timeframe: M5 (5 นาที), ดึง 200 bars ต่อ cycle
 7. Cycle interval: 10 วินาที
-8. Config: trader/config/settings.json (risk, regime, liquidity params)
+8. Config: backend/trader/config/settings.json (risk, regime, liquidity params)
 
 ═══════════════════════════════════════════════════════════
-โครงสร้าง trader/ MODULE (ทุกไฟล์ import ด้วย "from trader.*")
+โครงสร้าง backend/trader/ MODULE (ทุกไฟล์ import ด้วย "from backend.trader.*")
 ═══════════════════════════════════════════════════════════
 
-trader/
+backend/trader/
 ├─ main.py               ← Entry point: tick_cycle loop per symbol
 ├─ config/
 │  └─ settings.json      ← Risk limits, regime thresholds, session hours, symbol mapping
@@ -278,19 +278,19 @@ Risk Parameters (settings.json)
 9. เพิ่ม Dashboard (Nuxt/Streamlit) ดูสถานะ real-time
 10. ปรับ Position Manager: partial TP (close 30% at TP1, 30% at TP2, rest at TP3)
 11. Train regime classifier ด้วยข้อมูลเพิ่ม
-12. Cleanup: ลบ backend/ legacy code ที่ไม่ใช้แล้ว
+12. Cleanup: ลบ trader_legacy/ code ที่ไม่ใช้แล้ว
 13. ตรวจ trade journal ใน opus.db ว่า log ครบถ้วน
 
 ═══════════════════════════════════════════════════════════
 คำสั่งรัน
 ═══════════════════════════════════════════════════════════
 - Activate venv: cd D:\VibeCode\Trade && .\.venv\Scripts\Activate.ps1
-- LIVE:      python -m trader.main --mode live
-- DRY_RUN:   python -m trader.main --mode dry_run
-- Backtest:  python -m trader.scripts.run_backtest --symbol XAUUSD --start 2025-01-01 --end 2025-12-31
-- QC:        python -m trader.scripts.qc_suite
-- Live Gate: python -m trader.scripts.live_gate --run-fresh --symbol XAUUSD --bars 25920
-- Smoke:     python -m trader.scripts.smoke_test_order
+- LIVE:      python -m backend.trader.main --mode live
+- DRY_RUN:   python -m backend.trader.main --mode dry_run
+- Backtest:  python -m backend.trader.scripts.run_backtest --symbol XAUUSD --start 2025-01-01 --end 2025-12-31
+- QC:        python -m backend.trader.scripts.qc_suite
+- Live Gate: python -m backend.trader.scripts.live_gate --run-fresh --symbol XAUUSD --bars 25920
+- Smoke:     python -m backend.trader.scripts.smoke_test_order
 
 ═══════════════════════════════════════════════════════════
 IMPORTANT RULES
@@ -299,7 +299,7 @@ IMPORTANT RULES
 - ห้ามลบ Risk Gate: ต้องมี SL ทุก position
 - Default mode = DRY_RUN เสมอ (ไม่ใช่ LIVE)
 - Capital preservation first, then profitability
-- All imports ใช้ "from trader.*" (ไม่ใช่ "from backend.*")
+- All imports ใช้ "from backend.trader.*" เป็น default
 - บันทึกทุกอย่างลง SQLite (opus.db)
 
 กรุณาอ่าน GEMINI.md ก่อนเริ่มงานทุกครั้ง

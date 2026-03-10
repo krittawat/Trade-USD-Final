@@ -4,17 +4,26 @@
 # ============================================================================
 
 $ROOT = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+$TRADER_DIR = Join-Path $ROOT "backend\trader"
+$VENV_PY = Join-Path $ROOT ".venv\Scripts\python.exe"
 $env:PYTHONPATH = Join-Path $ROOT "backend"
 
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host "  🚀 ANTIGRAVITY LIVE BOT — AUTO-RESTART MODE" -ForegroundColor Yellow
 Write-Host "  Root  : $ROOT" -ForegroundColor Gray
+Write-Host "  Trader: $TRADER_DIR" -ForegroundColor Gray
 Write-Host "  PYTHONPATH: $env:PYTHONPATH" -ForegroundColor Gray
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
 
-Set-Location $ROOT
+if (Test-Path $VENV_PY) {
+    $PYTHON_BIN = $VENV_PY
+} else {
+    $PYTHON_BIN = "python"
+}
+
+Set-Location $TRADER_DIR
 
 $restartCount = 0
 $maxRestarts  = 50   # ป้องกัน crash loop ถาวร
@@ -25,8 +34,8 @@ while ($restartCount -lt $maxRestarts) {
 
     Write-Host "[$timestamp] 🟢 Starting Bot... (Attempt #$restartCount)" -ForegroundColor Green
 
-    # --- Run Bot ---
-    uv run python -m backend.trader.main --mode live
+    # --- Run Bot from backend/trader as primary runtime ---
+    & $PYTHON_BIN "main.py" --mode live --use-backtest-overrides --reset-pnl
 
     $exitCode = $LASTEXITCODE
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"

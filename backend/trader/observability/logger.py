@@ -12,7 +12,8 @@ from datetime import datetime
 from pathlib import Path
 
 # ── Logging directory ────────────────────────────────────────
-LOG_DIR = Path("d:/VibeCode/Trade/trader/logs")
+DEFAULT_LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
+LOG_DIR = Path(os.getenv("OPUS_LOG_DIR", str(DEFAULT_LOG_DIR)))
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── Color codes for Windows terminal (ANSI) ──────────────────
@@ -78,17 +79,66 @@ class PrettyConsoleFormatter(logging.Formatter):
         return f"{C.DIM}{ts}{C.RST} {prefix}{color}{msg}{C.RST}"
 
 
+class ResilientStreamHandler(logging.StreamHandler):
+    """
+    Stream handler that disables itself on unrecoverable I/O errors.
+    This avoids repeated '--- Logging error ---' traceback spam in long-running sessions.
+    """
+    def __init__(self, stream=None):
+        super().__init__(stream)
+        self._disabled = False
+
+    def emit(self, record):
+        if self._disabled:
+            return
+        try:
+            super().emit(record)
+        except (PermissionError, OSError, ValueError) as exc:
+            self._disabled = True
+            fallback = getattr(sys, "__stderr__", None)
+            if fallback and not fallback.closed:
+                try:
+                    fallback.write(f"[logger] console handler disabled: {exc}\n")
+                    fallback.flush()
+                except Exception:
+                    pass
+
+
+class ResilientFileHandler(logging.FileHandler):
+    """
+    File handler that disables itself on file I/O errors, keeping console logs alive.
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._disabled = False
+
+    def emit(self, record):
+        if self._disabled:
+            return
+        try:
+            super().emit(record)
+        except (PermissionError, OSError, ValueError):
+            self._disabled = True
+
+
 # ── Logger Setup ────────────────────────────────────────────
 def setup_logger(name="opus_logger", log_file="trade.log"):
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)
+    logger.propagate = False
+    # Hide internal logging framework tracebacks if a handler fails.
+    logging.raiseExceptions = False
 
     # Avoid duplicate handlers on re-import
     if not logger.handlers:
         # File handler: JSON lines (full detail)
-        fh = logging.FileHandler(LOG_DIR / log_file, encoding="utf-8")
-        fh.setFormatter(JSONFormatter())
-        fh.setLevel(logging.DEBUG)
+        try:
+            fh = ResilientFileHandler(LOG_DIR / log_file, encoding="utf-8")
+            fh.setFormatter(JSONFormatter())
+            fh.setLevel(logging.DEBUG)
+            logger.addHandler(fh)
+        except Exception:
+            pass
 
         # Console handler: pretty compact (UTF-8 for Windows emoji/Thai support)
         if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
@@ -97,11 +147,10 @@ def setup_logger(name="opus_logger", log_file="trade.log"):
             except Exception:
                 pass
         
-        ch = logging.StreamHandler(sys.stdout)
+        ch = ResilientStreamHandler(sys.stdout)
         ch.setFormatter(PrettyConsoleFormatter())
         ch.setLevel(logging.INFO)
 
-        logger.addHandler(fh)
         logger.addHandler(ch)
 
     return logger

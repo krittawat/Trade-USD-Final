@@ -129,19 +129,19 @@ class AIFeedbackLoop:
                     adjusted = BASE_CONFIDENCE + ICE_PENALTY
                     logger.info(
                         f"  🧊 FEEDBACK: {model} ICE COLD (WR={win_rate:.0%}) → "
-                        f"Confidence +{ICE_PENALTY:.0%} = {adjusted:.2f}"
+                        f"MinConf +{ICE_PENALTY:.0%} = {adjusted:.2f}"
                     )
                 elif win_rate < COLD_STREAK_THRESHOLD:
                     adjusted = BASE_CONFIDENCE + COLD_PENALTY
                     logger.info(
                         f"  ❄️ FEEDBACK: {model} COLD (WR={win_rate:.0%}) → "
-                        f"Confidence +{COLD_PENALTY:.0%} = {adjusted:.2f}"
+                        f"MinConf +{COLD_PENALTY:.0%} = {adjusted:.2f}"
                     )
                 elif win_rate > HOT_STREAK_THRESHOLD:
                     adjusted = BASE_CONFIDENCE - HOT_REWARD
                     logger.info(
                         f"  🔥 FEEDBACK: {model} HOT (WR={win_rate:.0%}) → "
-                        f"Confidence -{HOT_REWARD:.0%} = {adjusted:.2f}"
+                        f"MinConf -{HOT_REWARD:.0%} = {adjusted:.2f}"
                     )
 
                 # Clamp to floor/ceiling

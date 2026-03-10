@@ -140,6 +140,7 @@ class SQLiteStore:
                 win_rate REAL DEFAULT 0,
                 total_trades INTEGER DEFAULT 0,
                 total_pnl REAL DEFAULT 0,
+                max_drawdown_pct REAL DEFAULT 999,
                 score REAL DEFAULT 0,
                 updated_at TEXT NOT NULL,
                 PRIMARY KEY (symbol, regime)
@@ -218,6 +219,7 @@ class SQLiteStore:
         self._safe_add_column("shadow_trades", "outcome", "TEXT DEFAULT 'PENDING'")
         self._safe_add_column("shadow_trades", "outcome_pnl", "REAL DEFAULT 0")
         self._safe_add_column("shadow_trades", "evaluated_at", "TEXT")
+        self._safe_add_column("backtest_routing", "max_drawdown_pct", "REAL DEFAULT 999")
 
         # Shadow scoreboard — aggregated strategy performance from shadow trades
         self._conn.execute("""
@@ -1052,6 +1054,7 @@ class SQLiteStore:
         win_rate: float = 0.0,
         total_trades: int = 0,
         total_pnl: float = 0.0,
+        max_drawdown_pct: float = 999.0,
         score: float = 0.0,
     ) -> None:
         """Upsert backtest routing entry — best strategy per (symbol, regime)."""
@@ -1061,8 +1064,8 @@ class SQLiteStore:
             self._conn.execute("""
                 INSERT INTO backtest_routing
                     (symbol, regime, strategy, profit_factor, win_rate,
-                     total_trades, total_pnl, score, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     total_trades, total_pnl, max_drawdown_pct, score, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(symbol, regime)
                 DO UPDATE SET
                     strategy = excluded.strategy,
@@ -1070,12 +1073,13 @@ class SQLiteStore:
                     win_rate = excluded.win_rate,
                     total_trades = excluded.total_trades,
                     total_pnl = excluded.total_pnl,
+                    max_drawdown_pct = excluded.max_drawdown_pct,
                     score = excluded.score,
                     updated_at = excluded.updated_at
             """, (
                 symbol, regime, strategy,
                 profit_factor, win_rate, total_trades,
-                total_pnl, score,
+                total_pnl, max_drawdown_pct, score,
                 datetime.now(timezone.utc).isoformat(),
             ))
             self._conn.commit()

@@ -62,7 +62,11 @@ def compute_volume_features(df: pd.DataFrame, lookback: int = 20, spike_mult: fl
     df['vol_dryup'] = df['vol_ratio'] < dryup_mult
     return df
 
-def compute_bull_bear_power(df: pd.DataFrame, ema_period: int = 13) -> pd.DataFrame:
+def compute_bull_bear_power(
+    df: pd.DataFrame,
+    ema_period: int = 13,
+    mt5_period: int = 25,
+) -> pd.DataFrame:
     """
     Bull Power = High - EMA (buyer strength above equilibrium)
     Bear Power = Low - EMA (seller strength below equilibrium)
@@ -74,6 +78,16 @@ def compute_bull_bear_power(df: pd.DataFrame, ema_period: int = 13) -> pd.DataFr
     df['bear_power'] = df['low'] - df['ema_power']
     # Net power: positive = bulls dominate, negative = bears dominate
     df['net_power'] = df['bull_power'] + df['bear_power']
+
+    # MT5-style variant (often configured as Bulls/Bears period 25 on chart)
+    mt5_ema_col = f'ema_power_{mt5_period}'
+    bull_col = f'bull_power_{mt5_period}'
+    bear_col = f'bear_power_{mt5_period}'
+    net_col = f'net_power_{mt5_period}'
+    df[mt5_ema_col] = df['close'].ewm(span=mt5_period, adjust=False).mean()
+    df[bull_col] = df['high'] - df[mt5_ema_col]
+    df[bear_col] = df['low'] - df[mt5_ema_col]
+    df[net_col] = df[bull_col] + df[bear_col]
     return df
 
 def compute_ema_trend(df: pd.DataFrame, fast: int = 21, slow: int = 50) -> pd.DataFrame:
@@ -266,6 +280,13 @@ def compute_roc(df: pd.DataFrame, period: int = 5) -> pd.DataFrame:
     return df
 
 
+def compute_momentum(df: pd.DataFrame, period: int = 14) -> pd.DataFrame:
+    """MT5 Momentum oscillator (base 100): close / close[n] * 100."""
+    base = df['close'].shift(period).replace(0, np.nan)
+    df[f'momentum_{period}'] = (df['close'] / base) * 100.0
+    return df
+
+
 def compute_force_index(df: pd.DataFrame, ema_period: int = 13) -> pd.DataFrame:
     """Force Index = Price Change × Volume.
     Combines price movement with volume to measure the FORCE behind moves.
@@ -324,6 +345,7 @@ def add_volatility_features(df: pd.DataFrame, volume_lookback: int = 10) -> pd.D
     df = compute_vwap(df)
     # Momentum Features V3 (for Momentum Rider strategy)
     df = compute_roc(df)
+    df = compute_momentum(df, period=14)
     df = compute_force_index(df)
     df = compute_consecutive_direction(df)
     return df

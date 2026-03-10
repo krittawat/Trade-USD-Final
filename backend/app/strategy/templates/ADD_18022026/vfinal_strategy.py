@@ -260,8 +260,11 @@ def vfinal_strategy(df, df_h1=None, df_h4=None, df_d1=None, direction_mode="AUTO
 
 
 class VFinalStrategy(BaseStrategy):
+    # Keep DB/registry/routing key consistent across system.
+    name = "vfinal"
+
     def __init__(self):
-        self.name = "V-FINAL"
+        self.name = self.__class__.name
         self.params = {}
 
     def update_parameters(self, params: dict):

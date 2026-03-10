@@ -11,7 +11,13 @@ from app.strategy.base import BaseStrategy
 from app.domain.models import SymbolProfile, Decision
 from app.domain.enums import Action, RegimeType
 from app.core.logging import get_logger
-from trader.strategy.antigravity_alpha_v6 import signal_antigravity_alpha_v6, _get_cfg
+
+try:
+    # Standard runtime when PYTHONPATH points to backend/
+    from trader.strategy.antigravity_alpha_v6 import signal_antigravity_alpha_v6
+except ImportError:
+    # Fallback for module-style execution from repository root
+    from backend.trader.strategy.antigravity_alpha_v6 import signal_antigravity_alpha_v6
 
 logger = get_logger("AlphaV6Wrapper")
 

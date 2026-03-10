@@ -64,7 +64,21 @@ class BacktestRouter:
         Returns:
             Strategy name or None if no data
         """
+        resolved_symbol = symbol
         sym_table = self._routing_table.get(symbol)
+        if not sym_table:
+            for candidate in (symbol.upper(), symbol.lower(), symbol.rstrip("cmCM."), symbol.rstrip("cmCM.").upper()):
+                if candidate in self._routing_table:
+                    sym_table = self._routing_table[candidate]
+                    resolved_symbol = candidate
+                    break
+        if not sym_table:
+            symbol_lower = str(symbol).lower()
+            for sym_key, table in self._routing_table.items():
+                if sym_key.lower() == symbol_lower:
+                    sym_table = table
+                    resolved_symbol = sym_key
+                    break
         if not sym_table:
             logger.debug("router_no_data_for_symbol", extra={
                 "symbol": symbol, "regime": regime,
@@ -72,17 +86,36 @@ class BacktestRouter:
             })
             return self._default_strategy
 
-        strategy = sym_table.get(regime)
+        regime_key = (regime or "").upper()
+        strategy = sym_table.get(regime) or sym_table.get(regime_key)
         if strategy:
-            metrics = self._routing_metrics.get(symbol, {}).get(regime, {})
+            metrics = (
+                self._routing_metrics.get(resolved_symbol, {}).get(regime, {})
+                or self._routing_metrics.get(resolved_symbol, {}).get(regime_key, {})
+            )
             logger.info("router_pick", extra={
                 "symbol": symbol, "regime": regime,
                 "strategy": strategy,
                 "pf": metrics.get("profit_factor", 0),
                 "wr": metrics.get("win_rate", 0),
+                "max_dd": metrics.get("max_drawdown_pct", 0),
                 "score": metrics.get("score", 0),
             })
             return strategy
+
+        # Fallback to symbol-level ALL route if available
+        all_strategy = sym_table.get("ALL")
+        if all_strategy:
+            metrics = self._routing_metrics.get(resolved_symbol, {}).get("ALL", {})
+            logger.info("router_pick_all_fallback", extra={
+                "symbol": symbol, "regime": regime,
+                "strategy": all_strategy,
+                "pf": metrics.get("profit_factor", 0),
+                "wr": metrics.get("win_rate", 0),
+                "max_dd": metrics.get("max_drawdown_pct", 0),
+                "score": metrics.get("score", 0),
+            })
+            return all_strategy
 
         # Regime not in table → use default
         logger.debug("router_regime_not_found", extra={
@@ -170,6 +203,7 @@ class BacktestRouter:
                     "win_rate": best.get("win_rate", 0),
                     "total_trades": best.get("total_trades", 0),
                     "total_pnl": best.get("total_pnl", 0),
+                    "max_drawdown_pct": best.get("max_drawdown_pct", 999),
                     "score": best.get("score", 0),
                 }
 
@@ -177,8 +211,8 @@ class BacktestRouter:
                 cur.execute("""
                     INSERT INTO backtest_routing
                         (symbol, regime, strategy, profit_factor, win_rate,
-                         total_trades, total_pnl, score, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         total_trades, total_pnl, max_drawdown_pct, score, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(symbol, regime)
                     DO UPDATE SET
                         strategy = excluded.strategy,
@@ -186,6 +220,7 @@ class BacktestRouter:
                         win_rate = excluded.win_rate,
                         total_trades = excluded.total_trades,
                         total_pnl = excluded.total_pnl,
+                        max_drawdown_pct = excluded.max_drawdown_pct,
                         score = excluded.score,
                         updated_at = excluded.updated_at
                 """, (
@@ -194,6 +229,7 @@ class BacktestRouter:
                     best.get("win_rate", 0),
                     best.get("total_trades", 0),
                     best.get("total_pnl", 0),
+                    best.get("max_drawdown_pct", 999),
                     best.get("score", 0),
                     now,
                 ))
@@ -239,10 +275,14 @@ class BacktestRouter:
                 })
                 return
 
-            rows = cur.execute("""
+            cols = [c["name"] for c in cur.execute("PRAGMA table_info(backtest_routing)").fetchall()]
+            has_max_dd = "max_drawdown_pct" in cols
+            select_max_dd = "max_drawdown_pct" if has_max_dd else "999 AS max_drawdown_pct"
+
+            rows = cur.execute(f"""
                 SELECT symbol, regime, strategy,
                        profit_factor, win_rate, total_trades,
-                       total_pnl, score, updated_at
+                       total_pnl, {select_max_dd}, score, updated_at
                 FROM backtest_routing
                 ORDER BY symbol, score DESC
             """).fetchall()
@@ -260,6 +300,7 @@ class BacktestRouter:
                     "win_rate": row["win_rate"],
                     "total_trades": row["total_trades"],
                     "total_pnl": row["total_pnl"],
+                    "max_drawdown_pct": row["max_drawdown_pct"],
                     "score": row["score"],
                     "updated_at": row["updated_at"],
                 }

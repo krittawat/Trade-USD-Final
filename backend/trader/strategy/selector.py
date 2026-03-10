@@ -38,6 +38,7 @@ from .correlation_sniper import signal_correlation_sniper
 from .btc_oracle import signal_btc_oracle
 from .aether_flow_live import signal_aether_flow
 from .indices_ultimate import signal_indices_ultimate
+from .indicator_confluence import signal_indicator_confluence
 
 
 from backend.trader.features.pattern_recognition import analyze_patterns
@@ -79,6 +80,7 @@ ENABLE_BTC_ELITE = _STRATEGY_CFG.get("enable_btc_elite", False)
 ENABLE_BTC_ORACLE = _STRATEGY_CFG.get("enable_btc_oracle", True)
 ENABLE_CORRELATION_SNIPER = _STRATEGY_CFG.get("enable_correlation_sniper", True)
 ENABLE_AETHER_FLOW = _STRATEGY_CFG.get("enable_aether_flow", True)
+ENABLE_INDICATOR_CONFLUENCE = _STRATEGY_CFG.get("enable_indicator_confluence", True)
 
 
 _last_trade_bar = {}
@@ -195,13 +197,16 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
     candidates.append(signal_trend_killer(df, evolved_ctx))
     if ENABLE_ALPHA_V6:
         candidates.append(signal_alpha_v6_smc(df, evolved_ctx))
+    if ENABLE_INDICATOR_CONFLUENCE:
+        candidates.append(signal_indicator_confluence(df, evolved_ctx))
     
     # 2. Metals Focused
     if is_metal:
         if ENABLE_SMC_METALS: candidates.append(signal_smc_metals(df, evolved_ctx))
         if ENABLE_GOLD_ELITE: candidates.append(signal_gold_elite(df, evolved_ctx))
-        from .correlation_sniper import signal_correlation_sniper
-        candidates.append(signal_correlation_sniper(df, evolved_ctx))
+        if ENABLE_CORRELATION_SNIPER:
+            from .correlation_sniper import signal_correlation_sniper
+            candidates.append(signal_correlation_sniper(df, evolved_ctx))
 
     # 3. Crypto Focused
     if is_crypto:
@@ -255,11 +260,6 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
     if events:
         candidates.append(signal_liquidity_hunter(df, events, evolved_ctx))
 
-    if ENABLE_CORRELATION_SNIPER and "XAU" in _sym_debug.upper():
-        candidates.append(signal_correlation_sniper(df, evolved_ctx))
-
-
-
     from backend.trader.brain.quality_filter import quality_filter
     
     valid_candidates = [s for s in candidates if s is not None]
@@ -280,6 +280,29 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
     # UNLESS allow_counter_trend_critical is enabled for XAU, XAG, USOIL, BTC
     allow_counter_critical = _STRATEGY_CFG.get("allow_counter_trend_critical", False)
     htf_align = context.get('htf_ema_align', 'UNCERTAIN')
+    latest_row = df.iloc[-1] if not df.empty else {}
+    latest_structure = str(latest_row.get("structure", "NONE")).upper()
+    disp_up = bool(latest_row.get("displacement_up", False))
+    disp_down = bool(latest_row.get("displacement_down", False))
+    sweep_dir = next((e.get("direction") for e in (events or []) if e.get("type") == "SWEEP"), None)
+
+    def _allow_counter_by_fvg_structure(sig: dict) -> bool:
+        side = str(sig.get("side", "")).upper()
+        model = str(sig.get("model", "")).upper()
+        reasons_txt = " ".join(str(r) for r in sig.get("rationale", [])).upper()
+        has_fvg = ("FVG" in model) or ("FVG" in reasons_txt)
+        if not has_fvg:
+            return False
+
+        if side == "BUY":
+            structure_ok = latest_structure in {"HH", "HL"} or disp_up
+            sweep_ok = (sweep_dir is None) or (sweep_dir == "LONG_SIGNAL")
+            return structure_ok and sweep_ok
+        if side == "SELL":
+            structure_ok = latest_structure in {"LH", "LL"} or disp_down
+            sweep_ok = (sweep_dir is None) or (sweep_dir == "SHORT_SIGNAL")
+            return structure_ok and sweep_ok
+        return False
     
     if htf_align in ['BULLISH', 'BEARISH']:
         trend_candidates = []
@@ -292,7 +315,12 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
             is_critical = any(ca in _sym_debug.upper() for ca in critical_assets)
             
             if is_counter:
-                if is_critical and allow_counter_critical:
+                if _allow_counter_by_fvg_structure(sig):
+                    logger.info(
+                        f"⚖️ [SELECTOR] {sig.get('model')} ALLOWED: Counter-Trend via FVG+Structure "
+                        f"({_sym_debug}, Struct={latest_structure}, Sweep={sweep_dir or 'NONE'}, HTF={htf_align})"
+                    )
+                elif is_critical and allow_counter_critical:
                     logger.info(f"⚠️ [SELECTOR] {sig.get('model')} ALLOWED: Counter-Trend on Critical Asset {_sym_debug} (HTF: {htf_align}) via Override")
                 elif is_critical:
                     logger.info(f"🚫 [SELECTOR] {sig.get('model')} BLOCKED: Counter-Trend on Critical Asset {_sym_debug} (HTF: {htf_align})")

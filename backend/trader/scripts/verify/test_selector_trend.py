@@ -2,6 +2,7 @@ import sys
 import os
 import pandas as pd
 from unittest.mock import MagicMock, patch
+from datetime import datetime, timezone
 
 # Add project root to path
 sys.path.append('d:/VibeCode/Trade')
@@ -44,7 +45,8 @@ def test_selector_trend_gate():
         'signal_alpha_v6_smc', 'signal_micro_scalper', 'signal_gold_elite', 'signal_usoil_momentum',
         'signal_momentum_scalper_v2', 'signal_btc_mean_rev', 'signal_btc_stop_hunt_v2',
         'signal_btc_elite_v2', 'signal_btc_oracle', 'signal_aether_flow', 'signal_indices_ultimate',
-        'signal_liquidity_hunter', 'signal_correlation_sniper', 'signal_usoil_elite', 'signal_ai_brain'
+        'signal_liquidity_hunter', 'signal_correlation_sniper', 'signal_usoil_elite', 'signal_ai_brain',
+        'signal_indicator_confluence'
     ]
     
     # Apply patches
@@ -54,13 +56,25 @@ def test_selector_trend_gate():
         patches.append(p)
         p.start()
         
+    class _FixedDateTime:
+        @staticmethod
+        def now(tz=None):
+            return datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
+
     # Additional dependencies
     p_chop = patch('backend.trader.strategy.selector.is_market_choppy', return_value=(False, ""))
     p_quality = patch('backend.trader.brain.quality_filter.quality_filter.is_quality_signal', return_value=True)
     p_prob = patch('backend.trader.strategy.selector.calculate_trade_probability', return_value=80.0)
     p_pattern = patch('backend.trader.strategy.selector.analyze_patterns', return_value={'bullish_qml': False, 'bearish_qml': False})
+    p_profile = patch('backend.trader.strategy.selector._resolve_asset_profile', return_value={
+        "cooldown_bars": 1, "min_rr": 1.0, "min_confidence": 0.6
+    })
+    p_feedback = patch('backend.trader.strategy.selector.feedback_loop.get_adjusted_confidence', return_value=0.0)
+    p_time = patch('backend.trader.strategy.selector.datetime', _FixedDateTime)
+    p_usoil_elite_mod = patch('backend.trader.strategy.usoil_elite.signal_usoil_elite', return_value=mock_buy_signal)
+    p_usoil_momentum_mod = patch('backend.trader.strategy.usoil_momentum.signal_usoil_momentum', return_value=None)
     
-    for p in [p_chop, p_quality, p_prob, p_pattern]:
+    for p in [p_chop, p_quality, p_prob, p_pattern, p_profile, p_feedback, p_time, p_usoil_elite_mod, p_usoil_momentum_mod]:
         p.start()
         patches.append(p)
 

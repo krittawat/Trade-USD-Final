@@ -1,0 +1,78 @@
+{
+  "generated_at": "2026-03-10T09:22:45.036115+00:00",
+  "run_id": "bt360_20260310_092206_951066",
+  "engine": "trader",
+  "days": 14,
+  "requested_equity": 300.0,
+  "effective_equity": 1000.0,
+  "optimize_equity_floor": 1000.0,
+  "lookback": 100,
+  "hold_bars": 50,
+  "min_trades": 1,
+  "max_bars_per_run": 800,
+  "timeframes": [
+    "M5"
+  ],
+  "symbols": [
+    "XAUUSD"
+  ],
+  "best_by_symbol": {
+    "XAUUSD": {
+      "win_rate": 0,
+      "profit_factor": 0,
+      "max_dd": 0,
+      "total_trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "net_pnl": 0,
+      "final_equity": 1000.0,
+      "symbol": "XAUUSD",
+      "timeframe": "M5",
+      "engine": "trader",
+      "bars_used": 800,
+      "bars_raw": 2771,
+      "truncated": true,
+      "score": -30.0,
+      "rank": 1
+    }
+  },
+  "ranked_rows": [
+    {
+      "win_rate": 0,
+      "profit_factor": 0,
+      "max_dd": 0,
+      "total_trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "net_pnl": 0,
+      "final_equity": 1000.0,
+      "symbol": "XAUUSD",
+      "timeframe": "M5",
+      "engine": "trader",
+      "bars_used": 800,
+      "bars_raw": 2771,
+      "truncated": true,
+      "score": -30.0,
+      "rank": 1
+    }
+  ],
+  "rows_all_engines": [
+    {
+      "win_rate": 0,
+      "profit_factor": 0,
+      "max_dd": 0,
+      "total_trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "net_pnl": 0,
+      "final_equity": 1000.0,
+      "symbol": "XAUUSD",
+      "timeframe": "M5",
+      "engine": "trader",
+      "bars_used": 800,
+      "bars_raw": 2771,
+      "truncated": true,
+      "score": -30.0
+    }
+  ]
+}

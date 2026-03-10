@@ -114,8 +114,10 @@ def load_tournament_results(db_path: str) -> dict:
 
     # Get routing table
     try:
+        cols = [r["name"] for r in cur.execute("PRAGMA table_info(backtest_routing)").fetchall()]
+        strategy_col = "strategy_name" if "strategy_name" in cols else "strategy"
         rows = cur.execute("""
-            SELECT symbol, regime, strategy_name, score, win_rate, profit_factor
+            SELECT symbol, regime, """ + strategy_col + """ AS strategy_name, score, win_rate, profit_factor
             FROM backtest_routing
             ORDER BY symbol, score DESC
         """).fetchall()
