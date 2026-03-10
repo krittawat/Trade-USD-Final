@@ -1,0 +1,50 @@
+﻿DEBUG: Bar 6000/8632
+DEBUG: Bar 7000/8632
+DEBUG: Bar 8000/8632
+[77/81] BTC_SL3.0_RR2.0_ADX18_Score60       | WR:   0.0% | PF: 0.00 | Trds:   0 | PnL: $  0.00 | Score: -265.0
+DEBUG: Inside run()
+DEBUG: Processing 8632 bars...
+DEBUG: Bar 1000/8632
+DEBUG: Bar 2000/8632
+DEBUG: Bar 3000/8632
+DEBUG: Bar 4000/8632
+DEBUG: Bar 5000/8632
+DEBUG: Bar 6000/8632
+DEBUG: Bar 7000/8632
+DEBUG: Bar 8000/8632
+[78/81] BTC_SL3.0_RR2.0_ADX18_Score70       | WR:   0.0% | PF: 0.00 | Trds:   0 | PnL: $  0.00 | Score: -265.0
+DEBUG: Inside run()
+DEBUG: Processing 8632 bars...
+DEBUG: Bar 1000/8632
+DEBUG: Bar 2000/8632
+DEBUG: Bar 3000/8632
+DEBUG: Bar 4000/8632
+DEBUG: Bar 5000/8632
+DEBUG: Bar 6000/8632
+DEBUG: Bar 7000/8632
+DEBUG: Bar 8000/8632
+[79/81] BTC_SL3.0_RR2.0_ADX20_Score50       | WR:   0.0% | PF: 0.00 | Trds:   0 | PnL: $  0.00 | Score: -265.0
+DEBUG: Inside run()
+DEBUG: Processing 8632 bars...
+DEBUG: Bar 1000/8632
+DEBUG: Bar 2000/8632
+DEBUG: Bar 3000/8632
+DEBUG: Bar 4000/8632
+DEBUG: Bar 5000/8632
+DEBUG: Bar 6000/8632
+DEBUG: Bar 7000/8632
+DEBUG: Bar 8000/8632
+[80/81] BTC_SL3.0_RR2.0_ADX20_Score60       | WR:   0.0% | PF: 0.00 | Trds:   0 | PnL: $  0.00 | Score: -265.0
+DEBUG: Inside run()
+DEBUG: Processing 8632 bars...
+DEBUG: Bar 1000/8632
+DEBUG: Bar 2000/8632
+DEBUG: Bar 3000/8632
+DEBUG: Bar 4000/8632
+DEBUG: Bar 5000/8632
+DEBUG: Bar 6000/8632
+DEBUG: Bar 7000/8632
+DEBUG: Bar 8000/8632
+[81/81] BTC_SL3.0_RR2.0_ADX20_Score70       | WR:   0.0% | PF: 0.00 | Trds:   0 | PnL: $  0.00 | Score: -265.0
+
+โ No configuration met the minimum standards (WR >= 50%, PF >= 1.3).

@@ -19,6 +19,7 @@ StrategyEvolver — ปรับ parameters ให้ดีขึ้นด้ว
 
 import random
 import copy
+import time
 from typing import Optional
 
 from app.core.logging import get_logger
@@ -96,6 +97,7 @@ class StrategyEvolver:
         baseline_params: dict | None = None,
         generations: int = 5,
         population_size: int = 10,
+        deadline: float = 0.0,
     ) -> dict:
         """
         รัน Genetic Algorithm เพื่อหา parameters ที่ดีที่สุด.
@@ -146,10 +148,27 @@ class StrategyEvolver:
         best_score = base_score
 
         # --- Evolution loop ---
+        actual_gens = 0
         for gen in range(generations):
+            # --- Deadline check at generation level ---
+            if deadline > 0 and time.monotonic() > deadline:
+                logger.warning("evolve_timeout_break", extra={
+                    "strategy": strategy_name, "symbol": symbol,
+                    "gen": gen, "total_gens": generations,
+                })
+                break
+
+            actual_gens = gen + 1
+
             # ทดสอบทุก individual
             scored: list[tuple[dict, float]] = []
+            timed_out = False
             for params in population:
+                # --- Deadline check at individual level ---
+                if deadline > 0 and time.monotonic() > deadline:
+                    timed_out = True
+                    break
+
                 try:
                     result = await practice_engine.run_practice(
                         symbol=symbol,
@@ -161,6 +180,12 @@ class StrategyEvolver:
                     scored.append((params, result.score))
                 except Exception:
                     scored.append((params, 0.0))
+                
+                # Yield control to prevent blocking main loop during heavy backtests
+                await asyncio.sleep(0)
+
+            if not scored:
+                break
 
             # เรียง → top 50% เป็น parents
             scored.sort(key=lambda x: x[1], reverse=True)
@@ -168,6 +193,13 @@ class StrategyEvolver:
             if scored[0][1] > best_score:
                 best_score = scored[0][1]
                 best_params = scored[0][0].copy()
+
+            if timed_out:
+                logger.warning("evolve_timeout_mid_gen", extra={
+                    "strategy": strategy_name, "symbol": symbol,
+                    "gen": gen + 1, "evaluated": len(scored),
+                })
+                break
 
             # Select parents (top 50%)
             n_parents = max(2, population_size // 2)
@@ -218,7 +250,7 @@ class StrategyEvolver:
             "best_params": best_params,
             "best_score": round(best_score, 4),
             "base_score": round(base_score, 4),
-            "generations_run": generations,
+            "generations_run": actual_gens,
             "improvement": round(improvement, 4),
         }
 

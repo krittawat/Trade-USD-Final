@@ -1,0 +1,36 @@
+{
+  "version": "v4_transformer_gru",
+  "symbol": "TEST_TRAIN",
+  "input_size": 55,
+  "hidden_size": 128,
+  "num_classes": 3,
+  "best_val_loss": 1.0985,
+  "best_val_acc": 0.35,
+  "per_class_metrics": {
+    "BUY": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "HOLD": {
+      "precision": 0.2759,
+      "recall": 0.4571,
+      "f1": 0.3441
+    },
+    "SELL": {
+      "precision": 0.4194,
+      "recall": 0.6047,
+      "f1": 0.4952
+    }
+  },
+  "train_samples": 480,
+  "val_samples": 120,
+  "class_distribution": {
+    "BUY": 158,
+    "HOLD": 163,
+    "SELL": 159
+  },
+  "epochs_run": 3,
+  "training_time_sec": 33.4,
+  "trained_at": "2026-02-22 06:17 UTC"
+}

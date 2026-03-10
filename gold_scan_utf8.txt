@@ -1,0 +1,23 @@
+﻿Scanning Gold (XAUUSDc) for entry opportunities...
+01:19:16 > mt5_connect_attempt  server=Exness-MT5Real  login=None
+01:19:17 > mode_resolved  config_currency=USC  mt5_currency=USC
+01:19:17 > mt5_mode_detected  mode={'account_currency': 'USC', 'lot_mode': 'CENT', 'symbol_suffix': 'c', 'cent_multiplier': 100.0}  account_currency=USC
+01:19:17 > mt5_connected  mode=USC  login=183302855  server=Exness-MT5Real25  balance=3780.96  equity=3681.26
+
+📊 --- Market Data for XAUUSDc ---
+Ask: 5233.616
+Bid: 5233.256
+Spread: 0.3599999999996726
+
+📈 --- Technical Indicators (M5) ---
+EMA14: 5233.4376
+EMA50: 5228.1666
+RSI14: 51.14
+ATR14: 6.2542
+
+Current M5 Trend: UP (WEAK)
+
+🤖 --- Strategy Analysis (Gold Evolution) ---
+Action: BUY
+Confidence: 0.51
+Reason: ✅ Standard Score=51/100 RR=0.86 | L1:Full bull stack; L1:>EMA50; L1:EMA9>21; L2:H1↑; L2:H1 RSI=50 bullish zone; L3:Pullback to EMA21

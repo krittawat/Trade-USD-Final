@@ -1,9 +1,10 @@
-﻿from .base_strategy import BaseStrategy, StrategyDecision
+﻿from app.domain.enums import Action
+from .base_strategy import BaseStrategy, StrategyDecision
 from typing import Dict, Any, Optional
 
 class BTCMomentumStrategy(BaseStrategy):
     """
-    BTC Momentum Scalping Strategy (BTCUSDm)
+    BTC Momentum Scalping Strategy (BTCUSDc)
     
     Architecture:
     - M15: Trend Filter (EMA 50/200)
@@ -39,9 +40,9 @@ class BTCMomentumStrategy(BaseStrategy):
         # 1. Daily Management
         if daily_profit_thb >= self.DAILY_TARGET_THB_MAX:
              return StrategyDecision(
-                signal="NO_TRADE",
+                signal="HOLD",
                 reason=f"Daily Target Reached ({daily_profit_thb:.0f} THB)",
-                warning="Auto-Scale Off"
+                confidence=0.0
             )
 
         # 2. M15 Trend Filter
@@ -54,7 +55,7 @@ class BTCMomentumStrategy(BaseStrategy):
             trend_bias = "SHORT"
         
         if trend_bias == "NEUTRAL":
-             return StrategyDecision(signal="NO_TRADE", reason="M15 Trend Neutral/Flat")
+             return StrategyDecision(signal="HOLD", reason="M15 Trend Neutral/Flat", confidence=0.0)
 
         # 3. M5 Setup Validation
         setup_valid = False
@@ -94,22 +95,22 @@ class BTCMomentumStrategy(BaseStrategy):
                  setup_reason = "M5 Close above EMA50"
 
         if not setup_valid:
-             return StrategyDecision(signal="NO_TRADE", reason=f"Bias {trend_bias} but {setup_reason}")
+             return StrategyDecision(signal="HOLD", reason=f"Bias {trend_bias} but {setup_reason}", confidence=0.0)
 
         # 4. M1 Execution Timing
         # Momentum confirmation
-        signal = "NO_TRADE"
+        signal = Action.HOLD
         reason = "Waiting for M1 Momentum"
         
         if trend_bias == "LONG":
             # Bullish close
             if close_m1 > open_m1:
-                signal = "BUY"
+                signal = Action.BUY
                 reason = "M1 Bullish Momentum Confirmed"
         elif trend_bias == "SHORT":
             # Bearish close
             if close_m1 < open_m1:
-                signal = "SELL"
+                signal = Action.SELL
                 reason = "M1 Bearish Momentum Confirmed"
                 
         # 5. Risk Calculation
@@ -120,22 +121,22 @@ class BTCMomentumStrategy(BaseStrategy):
         sl_pct = 0.003
         tp_pct = 0.004
         
-        if signal != "NO_TRADE":
+        if signal != Action.HOLD:
             entry = close_m1
-            sl = entry * (1 - sl_pct) if signal == "BUY" else entry * (1 + sl_pct)
-            tp = entry * (1 + tp_pct) if signal == "BUY" else entry * (1 - tp_pct)
+            sl = entry * (1 - sl_pct) if signal == Action.BUY else entry * (1 + sl_pct)
+            tp = entry * (1 + tp_pct) if signal == Action.BUY else entry * (1 - tp_pct)
             
             return StrategyDecision(
-                signal=signal,
+                signal=signal.value,
                 entry_price=entry,
+                signal_sl=sl,  # Note: mapping sl to signal_sl or sl depending on model, base_strategy uses sl
                 sl=sl,
                 tp=tp,
                 reason=f"{reason} | {setup_reason} | {trend_bias}",
-                confidence=0.9,
-                risk_pct=1.0 # 1% Risk
+                confidence=0.9
             )
             
-        return StrategyDecision(signal="NO_TRADE", reason=reason)
+        return StrategyDecision(signal="HOLD", reason=reason, confidence=0.0)
 
     def get_status(self) -> Dict[str, Any]:
         return {

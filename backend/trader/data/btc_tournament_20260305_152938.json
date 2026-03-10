@@ -1,0 +1,172 @@
+{
+  "symbol": "BTCUSDm",
+  "bars": 60,
+  "results": [
+    {
+      "name": "MOMENTUM_SCALPER_V2",
+      "trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "wr": 0,
+      "pf": 0,
+      "max_dd": 0,
+      "net": 0,
+      "eq": 100.0
+    },
+    {
+      "name": "MOMENTUM_SCALPER_V1",
+      "trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "wr": 0,
+      "pf": 0,
+      "max_dd": 0,
+      "net": 0,
+      "eq": 100.0
+    },
+    {
+      "name": "PREDICTA_V4",
+      "trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "wr": 0,
+      "pf": 0,
+      "max_dd": 0,
+      "net": 0,
+      "eq": 100.0
+    },
+    {
+      "name": "ANTIGRAVITY_ALPHA",
+      "trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "wr": 0,
+      "pf": 0,
+      "max_dd": 0,
+      "net": 0,
+      "eq": 100.0
+    },
+    {
+      "name": "BTC_WHALE",
+      "trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "wr": 0,
+      "pf": 0,
+      "max_dd": 0,
+      "net": 0,
+      "eq": 100.0
+    },
+    {
+      "name": "MICRO_SCALPER",
+      "trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "wr": 0,
+      "pf": 0,
+      "max_dd": 0,
+      "net": 0,
+      "eq": 100.0
+    },
+    {
+      "name": "AI_BRAIN",
+      "trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "wr": 0,
+      "pf": 0,
+      "max_dd": 0,
+      "net": 0,
+      "eq": 100.0
+    },
+    {
+      "name": "TREND_KILLER",
+      "trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "wr": 0,
+      "pf": 0,
+      "max_dd": 0,
+      "net": 0,
+      "eq": 100.0
+    },
+    {
+      "name": "MOMENTUM_RIDER",
+      "trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "wr": 0,
+      "pf": 0,
+      "max_dd": 0,
+      "net": 0,
+      "eq": 100.0
+    },
+    {
+      "name": "FVG_LOGIC",
+      "trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "wr": 0,
+      "pf": 0,
+      "max_dd": 0,
+      "net": 0,
+      "eq": 100.0
+    },
+    {
+      "name": "EASY_TREND",
+      "trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "wr": 0,
+      "pf": 0,
+      "max_dd": 0,
+      "net": 0,
+      "eq": 100.0
+    },
+    {
+      "name": "SNIPER_PRO",
+      "trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "wr": 0,
+      "pf": 0,
+      "max_dd": 0,
+      "net": 0,
+      "eq": 100.0
+    },
+    {
+      "name": "BTC_MEAN_REV",
+      "trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "wr": 0,
+      "pf": 0,
+      "max_dd": 0,
+      "net": 0,
+      "eq": 100.0
+    },
+    {
+      "name": "BTC_STOP_HUNT_V2",
+      "trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "wr": 0,
+      "pf": 0,
+      "max_dd": 0,
+      "net": 0,
+      "eq": 100.0
+    },
+    {
+      "name": "BTC_ELITE_V2",
+      "trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "wr": 0,
+      "pf": 0,
+      "max_dd": 0,
+      "net": 0,
+      "eq": 100.0
+    }
+  ],
+  "timestamp": "2026-03-05T15:29:38.067023"
+}

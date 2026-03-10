@@ -1,0 +1,302 @@
+{
+  "timestamp": "2026-02-18T11:28:11.708385+00:00",
+  "symbols": {
+    "XAUUSDc": {
+      "total_strategies_tested": 12,
+      "live_recommended": 0,
+      "best": {
+        "strategy": "gold_elite",
+        "win_rate": 0.0,
+        "profit_factor": 0.0,
+        "composite_score": 0.0
+      },
+      "strategies": [
+        {
+          "rank": 1,
+          "strategy_name": "gold_elite",
+          "total_trades": 1,
+          "win_rate": 0.0,
+          "profit_factor": 0.0,
+          "total_profit_usd": -198.18,
+          "max_drawdown_pct": 2.0,
+          "expectancy": -198.18,
+          "avg_rr": -1.0,
+          "sharpe_ratio": 0,
+          "composite_score": 0.0,
+          "live_recommended": "False",
+          "per_regime": {
+            "regime=<RegimeType.TRENDING_UP: 'TRENDING_UP'> actionable=True score=0.316 reason='Weak Trend: ADX=15.5' details={'adx': 15.53, 'plus_di': 20.94, 'minus_di': 15.92, 'atr': 4.5406, 'atr_percentile': 51.0, 'atr_expanding': True, 'ema50': 4479.93, 'ema200': 4465.14, 'ema_bullish': True, 'ema_slope': 3.3164, 'bb_width': 10.2582, 'bb_width_percentile': 21.1, 'rsi': 60.91, 'volume_spike': np.False_, 'volume_ratio': np.float64(0.83), 'wick_ratio': 0.395, 'direction': 'TRENDING_UP', 'primary_regime': 'WEAK_TREND', 'confidence': 0.316}": {
+              "trades": 1,
+              "wins": 0,
+              "pnl": -198.18,
+              "win_rate": 0.0
+            }
+          },
+          "error": ""
+        },
+        {
+          "rank": 2,
+          "strategy_name": "gold_scalp_pro",
+          "total_trades": 0,
+          "win_rate": 0,
+          "profit_factor": 0,
+          "total_profit_usd": 0,
+          "max_drawdown_pct": 0,
+          "expectancy": 0,
+          "avg_rr": 0,
+          "sharpe_ratio": 0,
+          "composite_score": 0.0,
+          "live_recommended": false,
+          "per_regime": {},
+          "error": ""
+        },
+        {
+          "rank": 3,
+          "strategy_name": "gold_precision",
+          "total_trades": 2,
+          "win_rate": 50.0,
+          "profit_factor": 1.93,
+          "total_profit_usd": 199.34,
+          "max_drawdown_pct": 2.1,
+          "expectancy": 99.67,
+          "avg_rr": 0.5,
+          "sharpe_ratio": 3.57,
+          "composite_score": 0.0,
+          "live_recommended": false,
+          "per_regime": {
+            "regime=<RegimeType.TRENDING_UP: 'TRENDING_UP'> actionable=True score=0.696 reason='Weak Trend: ADX=28.2' details={'adx': 28.2, 'plus_di': 21.45, 'minus_di': 21.6, 'atr': 4.4871, 'atr_percentile': 38.0, 'atr_expanding': False, 'ema50': 4462.61, 'ema200': 4468.38, 'ema_bullish': False, 'ema_slope': 1.8605, 'bb_width': 15.3133, 'bb_width_percentile': 45.3, 'rsi': 47.15, 'volume_spike': np.False_, 'volume_ratio': np.float64(1.22), 'wick_ratio': 0.615, 'direction': 'UNKNOWN', 'primary_regime': 'WEAK_TREND', 'confidence': 0.696}": {
+              "trades": 1,
+              "wins": 1,
+              "pnl": 413.26,
+              "win_rate": 100.0
+            },
+            "regime=<RegimeType.HIGH_VOLATILITY: 'HIGH_VOLATILITY'> actionable=True score=0.99 reason='High Volatility: ATR pct=99%' details={'adx': 38.99, 'plus_di': 7.72, 'minus_di': 37.65, 'atr': 5.7216, 'atr_percentile': 99.0, 'atr_expanding': True, 'ema50': 4454.63, 'ema200': 4465.37, 'ema_bullish': False, 'ema_slope': -3.3107, 'bb_width': 21.2716, 'bb_width_percentile': 73.0, 'rsi': 26.57, 'volume_spike': np.True_, 'volume_ratio': np.float64(2.86), 'wick_ratio': 0.302, 'direction': 'TRENDING_DOWN', 'primary_regime': 'HIGH_VOLATILITY', 'confidence': 0.99}": {
+              "trades": 1,
+              "wins": 0,
+              "pnl": -213.92,
+              "win_rate": 0.0
+            }
+          },
+          "error": ""
+        },
+        {
+          "rank": 4,
+          "strategy_name": "gold_break_checklist",
+          "total_trades": 1,
+          "win_rate": 0.0,
+          "profit_factor": 0.0,
+          "total_profit_usd": -195.46,
+          "max_drawdown_pct": 2.0,
+          "expectancy": -195.46,
+          "avg_rr": -1.0,
+          "sharpe_ratio": 0,
+          "composite_score": 0.0,
+          "live_recommended": "False",
+          "per_regime": {
+            "regime=<RegimeType.UNKNOWN: 'UNKNOWN'> actionable=True score=0.0 reason='Insufficient data' details={}": {
+              "trades": 1,
+              "wins": 0,
+              "pnl": -195.46,
+              "win_rate": 0.0
+            }
+          },
+          "error": ""
+        },
+        {
+          "rank": 5,
+          "strategy_name": "gold_smart_money",
+          "total_trades": 2,
+          "win_rate": 50.0,
+          "profit_factor": 2.38,
+          "total_profit_usd": 284.05,
+          "max_drawdown_pct": 2.1,
+          "expectancy": 142.03,
+          "avg_rr": 0.75,
+          "sharpe_ratio": 4.59,
+          "composite_score": 0.0,
+          "live_recommended": false,
+          "per_regime": {
+            "regime=<RegimeType.TRENDING_UP: 'TRENDING_UP'> actionable=True score=0.694 reason='Strong Trend: ADX=29.7, ATR expanding' details={'adx': 29.72, 'plus_di': 30.01, 'minus_di': 11.04, 'atr': 4.5769, 'atr_percentile': 46.0, 'atr_expanding': True, 'ema50': 4461.78, 'ema200': 4468.54, 'ema_bullish': False, 'ema_slope': 2.0981, 'bb_width': 25.7648, 'bb_width_percentile': 80.3, 'rsi': 60.46, 'volume_spike': np.False_, 'volume_ratio': np.float64(1.31), 'wick_ratio': 0.554, 'direction': 'TRENDING_UP', 'primary_regime': 'STRONG_TREND', 'confidence': 0.694}": {
+              "trades": 1,
+              "wins": 1,
+              "pnl": 489.47,
+              "win_rate": 100.0
+            },
+            "regime=<RegimeType.HIGH_VOLATILITY: 'HIGH_VOLATILITY'> actionable=True score=0.97 reason='High Volatility: ATR pct=97%' details={'adx': 37.99, 'plus_di': 14.27, 'minus_di': 25.66, 'atr': 6.4664, 'atr_percentile': 97.0, 'atr_expanding': True, 'ema50': 4451.53, 'ema200': 4464.29, 'ema_bullish': False, 'ema_slope': -4.9561, 'bb_width': 24.7424, 'bb_width_percentile': 77.7, 'rsi': 45.52, 'volume_spike': np.False_, 'volume_ratio': np.float64(1.52), 'wick_ratio': 0.781, 'direction': 'TRENDING_DOWN', 'primary_regime': 'HIGH_VOLATILITY', 'confidence': 0.97}": {
+              "trades": 1,
+              "wins": 0,
+              "pnl": -205.42,
+              "win_rate": 0.0
+            }
+          },
+          "error": ""
+        },
+        {
+          "rank": 6,
+          "strategy_name": "gold_session_breakout",
+          "total_trades": 2,
+          "win_rate": 50.0,
+          "profit_factor": 1.81,
+          "total_profit_usd": 169.19,
+          "max_drawdown_pct": 3.4,
+          "expectancy": 84.6,
+          "avg_rr": 0.5,
+          "sharpe_ratio": 3.25,
+          "composite_score": 0.0,
+          "live_recommended": false,
+          "per_regime": {
+            "regime=<RegimeType.HIGH_VOLATILITY: 'HIGH_VOLATILITY'> actionable=True score=0.99 reason='High Volatility: ATR pct=99%' details={'adx': 26.16, 'plus_di': 28.26, 'minus_di': 12.15, 'atr': 7.1853, 'atr_percentile': 99.0, 'atr_expanding': True, 'ema50': 4476.23, 'ema200': 4467.79, 'ema_bullish': True, 'ema_slope': 4.5928, 'bb_width': 38.9888, 'bb_width_percentile': 96.3, 'rsi': 69.91, 'volume_spike': np.False_, 'volume_ratio': np.float64(1.01), 'wick_ratio': 0.63, 'direction': 'TRENDING_UP', 'primary_regime': 'HIGH_VOLATILITY', 'confidence': 0.99}": {
+              "trades": 1,
+              "wins": 1,
+              "pnl": 377.01,
+              "win_rate": 100.0
+            },
+            "regime=<RegimeType.HIGH_VOLATILITY: 'HIGH_VOLATILITY'> actionable=True score=0.98 reason='High Volatility: ATR pct=98%' details={'adx': 31.66, 'plus_di': 32.52, 'minus_di': 12.77, 'atr': 4.5196, 'atr_percentile': 98.0, 'atr_expanding': True, 'ema50': 4591.51, 'ema200': 4564.04, 'ema_bullish': True, 'ema_slope': 4.7427, 'bb_width': 41.6389, 'bb_width_percentile': 90.0, 'rsi': 71.77, 'volume_spike': np.False_, 'volume_ratio': np.float64(1.27), 'wick_ratio': 0.408, 'direction': 'TRENDING_UP', 'primary_regime': 'HIGH_VOLATILITY', 'confidence': 0.98}": {
+              "trades": 1,
+              "wins": 0,
+              "pnl": -207.82,
+              "win_rate": 0.0
+            }
+          },
+          "error": ""
+        },
+        {
+          "rank": 7,
+          "strategy_name": "gold_silver_wr60",
+          "total_trades": 0,
+          "win_rate": 0,
+          "profit_factor": 0,
+          "total_profit_usd": 0,
+          "max_drawdown_pct": 0,
+          "expectancy": 0,
+          "avg_rr": 0,
+          "sharpe_ratio": 0,
+          "composite_score": 0.0,
+          "live_recommended": false,
+          "per_regime": {},
+          "error": ""
+        },
+        {
+          "rank": 8,
+          "strategy_name": "scalping",
+          "total_trades": 1,
+          "win_rate": 0.0,
+          "profit_factor": 0.0,
+          "total_profit_usd": -201.37,
+          "max_drawdown_pct": 2.0,
+          "expectancy": -201.37,
+          "avg_rr": -1.0,
+          "sharpe_ratio": 0,
+          "composite_score": 0.0,
+          "live_recommended": "False",
+          "per_regime": {
+            "regime=<RegimeType.TRENDING_UP: 'TRENDING_UP'> actionable=True score=0.706 reason='Weak Trend: ADX=28.5' details={'adx': 28.52, 'plus_di': 15.22, 'minus_di': 20.17, 'atr': 4.5658, 'atr_percentile': 24.0, 'atr_expanding': False, 'ema50': 4820.69, 'ema200': 4821.21, 'ema_bullish': False, 'ema_slope': 3.2325, 'bb_width': 14.9284, 'bb_width_percentile': 22.0, 'rsi': 49.71, 'volume_spike': np.False_, 'volume_ratio': np.float64(0.88), 'wick_ratio': 0.582, 'direction': 'UNKNOWN', 'primary_regime': 'WEAK_TREND', 'confidence': 0.706}": {
+              "trades": 1,
+              "wins": 0,
+              "pnl": -201.37,
+              "win_rate": 0.0
+            }
+          },
+          "error": ""
+        },
+        {
+          "rank": 9,
+          "strategy_name": "sniper",
+          "total_trades": 3,
+          "win_rate": 66.7,
+          "profit_factor": 4.29,
+          "total_profit_usd": 718.58,
+          "max_drawdown_pct": 4.2,
+          "expectancy": 239.53,
+          "avg_rr": 1.18,
+          "sharpe_ratio": 9.58,
+          "composite_score": 0.0,
+          "live_recommended": false,
+          "per_regime": {
+            "regime=<RegimeType.TRENDING_DOWN: 'TRENDING_DOWN'> actionable=True score=0.816 reason='Strong Trend: ADX=35.8, ATR expanding' details={'adx': 35.82, 'plus_di': 18.1, 'minus_di': 18.85, 'atr': 4.2908, 'atr_percentile': 79.0, 'atr_expanding': True, 'ema50': 4465.49, 'ema200': 4454.17, 'ema_bullish': True, 'ema_slope': -2.7714, 'bb_width': 20.2781, 'bb_width_percentile': 66.7, 'rsi': 50.52, 'volume_spike': np.False_, 'volume_ratio': np.float64(0.96), 'wick_ratio': 0.487, 'direction': 'TRENDING_DOWN', 'primary_regime': 'STRONG_TREND', 'confidence': 0.816}": {
+              "trades": 1,
+              "wins": 1,
+              "pnl": 450.13,
+              "win_rate": 100.0
+            },
+            "regime=<RegimeType.TRENDING_UP: 'TRENDING_UP'> actionable=True score=0.434 reason='Weak Trend: ADX=19.5' details={'adx': 19.45, 'plus_di': 24.36, 'minus_di': 21.46, 'atr': 5.7304, 'atr_percentile': 48.0, 'atr_expanding': False, 'ema50': 4496.96, 'ema200': 4482.25, 'ema_bullish': True, 'ema_slope': -1.6645, 'bb_width': 32.8739, 'bb_width_percentile': 88.0, 'rsi': 57.18, 'volume_spike': np.False_, 'volume_ratio': np.float64(0.68), 'wick_ratio': 0.573, 'direction': 'UNKNOWN', 'primary_regime': 'WEAK_TREND', 'confidence': 0.434}": {
+              "trades": 1,
+              "wins": 1,
+              "pnl": 486.73,
+              "win_rate": 100.0
+            },
+            "regime=<RegimeType.TRENDING_UP: 'TRENDING_UP'> actionable=True score=0.546 reason='Weak Trend: ADX=23.2' details={'adx': 23.19, 'plus_di': 19.18, 'minus_di': 31.49, 'atr': 4.038, 'atr_percentile': 34.0, 'atr_expanding': True, 'ema50': 4594.21, 'ema200': 4593.51, 'ema_bullish': True, 'ema_slope': 0.4696, 'bb_width': 10.059, 'bb_width_percentile': 17.7, 'rsi': 41.49, 'volume_spike': np.True_, 'volume_ratio': np.float64(2.56), 'wick_ratio': 0.441, 'direction': 'UNKNOWN', 'primary_regime': 'WEAK_TREND', 'confidence': 0.546}": {
+              "trades": 1,
+              "wins": 0,
+              "pnl": -218.28,
+              "win_rate": 0.0
+            }
+          },
+          "error": ""
+        },
+        {
+          "rank": 10,
+          "strategy_name": "sniper_pro",
+          "total_trades": 0,
+          "win_rate": 0.0,
+          "profit_factor": 0.0,
+          "total_profit_usd": 0.0,
+          "max_drawdown_pct": 0.0,
+          "expectancy": 0.0,
+          "avg_rr": 0.0,
+          "sharpe_ratio": 0.0,
+          "composite_score": 0.0,
+          "live_recommended": false,
+          "per_regime": {},
+          "error": "Backtest execution failed"
+        },
+        {
+          "rank": 11,
+          "strategy_name": "trend_rider",
+          "total_trades": 1,
+          "win_rate": 0.0,
+          "profit_factor": 0.0,
+          "total_profit_usd": -205.07,
+          "max_drawdown_pct": 3.9,
+          "expectancy": -205.07,
+          "avg_rr": -1.0,
+          "sharpe_ratio": 0,
+          "composite_score": 0.0,
+          "live_recommended": "False",
+          "per_regime": {
+            "regime=<RegimeType.TRENDING_UP: 'TRENDING_UP'> actionable=True score=0.345 reason='Weak Trend: ADX=16.5' details={'adx': 16.49, 'plus_di': 16.64, 'minus_di': 18.42, 'atr': 4.5504, 'atr_percentile': 52.0, 'atr_expanding': False, 'ema50': 4479.25, 'ema200': 4464.68, 'ema_bullish': True, 'ema_slope': 3.6314, 'bb_width': 15.5199, 'bb_width_percentile': 41.3, 'rsi': 50.53, 'volume_spike': np.False_, 'volume_ratio': np.float64(1.03), 'wick_ratio': 0.519, 'direction': 'UNKNOWN', 'primary_regime': 'WEAK_TREND', 'confidence': 0.345}": {
+              "trades": 1,
+              "wins": 0,
+              "pnl": -205.07,
+              "win_rate": 0.0
+            }
+          },
+          "error": ""
+        },
+        {
+          "rank": 12,
+          "strategy_name": "ranging_sniper",
+          "total_trades": 2,
+          "win_rate": 50.0,
+          "profit_factor": 1.11,
+          "total_profit_usd": 23.23,
+          "max_drawdown_pct": 0.0,
+          "expectancy": 11.61,
+          "avg_rr": 0.06,
+          "sharpe_ratio": 0.6,
+          "composite_score": 0.0,
+          "live_recommended": false,
+          "per_regime": {
+            "regime=<RegimeType.UNKNOWN: 'UNKNOWN'> actionable=True score=0.0 reason='Insufficient data' details={}": {
+              "trades": 2,
+              "wins": 1,
+              "pnl": 23.23,
+              "win_rate": 50.0
+            }
+          },
+          "error": ""
+        }
+      ]
+    }
+  }
+}

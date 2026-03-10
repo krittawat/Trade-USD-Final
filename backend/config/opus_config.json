@@ -1,0 +1,70 @@
+{
+    "version": "1.0",
+    "description": "OPUS Ghost Protocol — Per-asset configuration",
+    "XAUUSDc": {
+        "risk_per_trade": 0.015,
+        "max_daily_dd_pct": 0.06,
+        "daily_target_usd": 20.0,
+        "spread_max_points": 35,
+        "atr_extreme_mult": 2.2,
+        "min_confidence": 0.65,
+        "aggressive_confidence": 0.75,
+        "max_consecutive_losses": 3,
+        "sessions_allowed": [
+            "LONDON",
+            "NEW_YORK",
+            "OVERLAP"
+        ],
+        "preferred_model": "A",
+        "pyramid_allowed": true,
+        "pyramid_add_r": 0.8,
+        "pyramid_size_r": 0.3,
+        "pyramid_min_confidence": 0.80,
+        "notes": "Gold: sweep-heavy in London open, NY open. Best for Model A"
+    },
+    "XAGUSDc": {
+        "risk_per_trade": 0.012,
+        "max_daily_dd_pct": 0.06,
+        "daily_target_usd": 15.0,
+        "spread_max_points": 25,
+        "atr_extreme_mult": 2.2,
+        "min_confidence": 0.65,
+        "aggressive_confidence": 0.75,
+        "max_consecutive_losses": 3,
+        "sessions_allowed": [
+            "LONDON",
+            "NEW_YORK",
+            "OVERLAP"
+        ],
+        "preferred_model": "A",
+        "pyramid_allowed": false,
+        "notes": "Silver: wider spreads, reduce risk slightly. No pyramid"
+    },
+    "BTCUSDc": {
+        "risk_per_trade": 0.01,
+        "max_daily_dd_pct": 0.06,
+        "daily_target_usd": 15.0,
+        "spread_max_points": 100,
+        "atr_extreme_mult": 2.5,
+        "min_confidence": 0.70,
+        "aggressive_confidence": 0.80,
+        "max_consecutive_losses": 3,
+        "sessions_allowed": [
+            "LONDON",
+            "NEW_YORK",
+            "OVERLAP",
+            "ASIA"
+        ],
+        "preferred_model": "B",
+        "pyramid_allowed": true,
+        "pyramid_add_r": 0.8,
+        "pyramid_size_r": 0.3,
+        "pyramid_min_confidence": 0.85,
+        "notes": "BTC: 24/7 but best in NY session. Higher ATR threshold. Model B (trend) preferred"
+    },
+    "kill_switch": {
+        "news_block_minutes": 15,
+        "low_liq_start_utc": 20,
+        "low_liq_end_utc": 22
+    }
+}

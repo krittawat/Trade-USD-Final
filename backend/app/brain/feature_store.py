@@ -13,8 +13,8 @@ Feature Store — เก็บ aggregated features (ไม่เก็บ raw ti
 
 ตัวอย่างการใช้:
     feature_store = FeatureStore(memory_store=memory)
-    await feature_store.update_features("XAUUSDm", {"rsi": 65.2, "atr": 1.5})
-    features = await feature_store.get_features("XAUUSDm", regime="TRENDING_UP")
+    await feature_store.update_features("XAUUSDc", {"rsi": 65.2, "atr": 1.5})
+    features = await feature_store.get_features("XAUUSDc", regime="TRENDING_UP")
 """
 
 import math
@@ -54,7 +54,7 @@ class FeatureStore:
             - std = sqrt(m2 / count)
 
         Args:
-            symbol: สัญลักษณ์ เช่น XAUUSDm
+            symbol: สัญลักษณ์ เช่น XAUUSDc
             features: dict ของค่า indicator เช่น {"rsi": 65.2, "atr": 1.5}
             regime: สภาวะตลาด เช่น TRENDING_UP
         """

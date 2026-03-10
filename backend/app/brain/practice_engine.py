@@ -31,13 +31,14 @@ from app.core.logging import get_logger
 from app.domain.enums import Action, RegimeType
 from app.domain.models import Decision, PracticeResult, SymbolProfile
 from app.brain.regime import classify_regime
+from app.strategy.invoker import analyze_with_fallback, normalize_strategy_params
 
 logger = get_logger(__name__)
 
 # --- Constants ---
 WINDOW_SIZE = 250       # จำนวนแท่งเทียนต่อ window (RAM-safe)
 MIN_CANDLES = 50        # ขั้นต่ำสำหรับการวิเคราะห์
-MAX_TRADES_PER_RUN = 200  # จำกัดจำนวน simulated trades ต่อรอบ
+MAX_TRADES_PER_RUN = 1000  # Increased for 180-day verification
 
 
 class PracticeEngine:
@@ -85,7 +86,7 @@ class PracticeEngine:
             4. สะสม wins/losses/R → return PracticeResult
 
         Args:
-            symbol: สัญลักษณ์ เช่น XAUUSDm
+            symbol: สัญลักษณ์ เช่น XAUUSDc
             strategy_name: ชื่อ strategy ที่จะทดสอบ
             candles: DataFrame ของแท่งเทียน [open, high, low, close, volume, time]
             profile: SymbolProfile (ถ้าไม่ส่ง → สร้าง default)
@@ -94,11 +95,13 @@ class PracticeEngine:
         Returns:
             PracticeResult: ผลลัพธ์การฝึกซ้อม
         """
+        normalized_params = normalize_strategy_params(params or {})
+
         if candles is None or len(candles) < MIN_CANDLES:
             return PracticeResult(
                 strategy_name=strategy_name,
                 symbol=symbol,
-                params=params or {},
+                params=normalized_params,
             )
 
         if profile is None:
@@ -113,7 +116,7 @@ class PracticeEngine:
             return PracticeResult(
                 strategy_name=strategy_name,
                 symbol=symbol,
-                params=params or {},
+                params=normalized_params,
             )
 
         # --- Run simulation (optimized) ---
@@ -136,9 +139,15 @@ class PracticeEngine:
         news_batch: dict[int, object] = {}
         if self.news_collector and "time" in candles.columns:
             try:
+                # Pre-extract values for fast numpy lookups
+                _times = candles["time"].values
+                _highs = candles["high"].values
+                _lows = candles["low"].values
+                _closes = candles["close"].values
+                
                 bar_times = []
                 for i in range(MIN_CANDLES, total_candles - 1):
-                    bt = candles.iloc[i]["time"]
+                    bt = _times[i]
                     if hasattr(bt, 'to_pydatetime'):
                         bt = bt.to_pydatetime()
                     bar_times.append(bt)
@@ -159,6 +168,12 @@ class PracticeEngine:
             start_idx = max(0, i - WINDOW_SIZE)
             window = candles.iloc[start_idx:i + 1]
             regime_cache[i] = classify_regime(window)
+
+        # Ensure arrays are explicitly defined locally for the main loop
+        if not ("_highs" in locals()):
+            _highs = candles["high"].values
+            _lows = candles["low"].values
+            _closes = candles["close"].values
 
         # ── Main simulation loop ──
         for i in range(MIN_CANDLES, total_candles - 1):
@@ -183,7 +198,13 @@ class PracticeEngine:
 
             # --- ถาม strategy ---
             try:
-                decision = strategy.analyze(window, profile, regime)
+                decision = analyze_with_fallback(
+                    strategy=strategy,
+                    candles=window,
+                    profile=profile,
+                    regime=regime,
+                    extra_kwargs=normalized_params,
+                )
             except Exception:
                 continue
 
@@ -206,16 +227,15 @@ class PracticeEngine:
                     news_ctx = ctx.impact
 
             # --- Simulate trade ---
-            entry_price = candles.iloc[i]["close"]
-            next_bar = candles.iloc[i + 1]
+            entry_price = float(_closes[i])
             trade_result = self._simulate_trade(
                 action=decision.action,
                 entry=entry_price,
                 sl=decision.stop_loss,
                 tp=decision.take_profit,
-                next_high=next_bar["high"],
-                next_low=next_bar["low"],
-                next_close=next_bar["close"],
+                next_high=float(_highs[i+1]),
+                next_low=float(_lows[i+1]),
+                next_close=float(_closes[i+1]),
             )
 
             trade_result["patterns"] = detected_patterns
@@ -233,8 +253,8 @@ class PracticeEngine:
                 news_trades[news_ctx] = []
             news_trades[news_ctx].append(trade_result["is_win"])
 
-            # Yield control periodically
-            if len(trades) % 50 == 0:
+            # Yield control periodically (based on candles to prevent blocking in low-trade density periods)
+            if i % 500 == 0:
                 await asyncio.sleep(0)
 
         # --- คำนวณ metrics ---
@@ -242,7 +262,7 @@ class PracticeEngine:
             trades=trades,
             strategy_name=strategy_name,
             symbol=symbol,
-            params=params or {},
+            params=normalized_params,
             candles_tested=total_candles,
             pattern_trades=pattern_trades,
             news_trades=news_trades,
@@ -401,15 +421,10 @@ class PracticeEngine:
         """
         คำนวณ performance metrics จาก simulated trades.
 
-        Metrics:
-            - win_rate: จำนวนชนะ / ทั้งหมด
-            - profit_factor: total_positive_R / |total_negative_R|
-            - max_drawdown: drawdown สูงสุด (% of peak)
-            - expectancy: (WR × avg_win) - ((1-WR) × avg_loss)  ในหน่วย R
-            - score: PF × WR × (1 - DD/100)
-            - patterns_found: pattern → count
-            - pattern_win_rates: pattern → win_rate
-            - news_stats: news_ctx → {count, win_rate}
+        Uses equity-curve-aware drawdown calculation:
+        - Starting balance: $10,000
+        - Risk per trade: 2% of current equity
+        - DD = (peak - trough) / peak × 100
         """
         total = len(trades)
         if total == 0:
@@ -443,24 +458,34 @@ class PracticeEngine:
         avg_loss_r = negative_r / losses if losses > 0 else 0
         expectancy = (win_rate * avg_win_r) - ((1 - win_rate) * avg_loss_r)
 
-        # --- Max Drawdown (R-based equity curve) ---
-        equity_curve = 0.0
-        peak = 0.0
-        max_dd = 0.0
-        for t in trades:
-            equity_curve += t["r_value"]
-            peak = max(peak, equity_curve)
-            dd = peak - equity_curve
-            max_dd = max(max_dd, dd)
+        # --- Max Drawdown (Equity-Curve Simulation) ---
+        # Simulate with $10,000 starting balance, 2% risk per trade
+        STARTING_BALANCE = 10000.0
+        RISK_PCT = 0.02  # 2% risk per trade
+        equity = STARTING_BALANCE
+        peak_equity = STARTING_BALANCE
+        max_dd_pct = 0.0
 
-        # แปลง DD เป็น % ของ peak (ถ้า peak > 0)
-        dd_pct = (max_dd / peak * 100) if peak > 0 else 0
+        for t in trades:
+            risk_usd = equity * RISK_PCT
+            # R_value: -1 = full SL hit, +1.5 = 1.5R win, etc.
+            pnl = risk_usd * t["r_value"]
+            equity += pnl
+            equity = max(equity, 0.01)  # Floor to avoid negative
+
+            if equity > peak_equity:
+                peak_equity = equity
+
+            if peak_equity > 0:
+                current_dd = (peak_equity - equity) / peak_equity * 100
+                max_dd_pct = max(max_dd_pct, current_dd)
+
+        dd_pct = round(max_dd_pct, 2)
 
         # --- Composite Score ---
-        # PF × WR × (1 - DD/100) → ค่าสูง = ดี
-        # Cap PF ที่ 10 เพื่อไม่ให้ค่าสุดขั้วครอบงำ
+        # PF × (WR^1.2) × (1 - DD/100) → Reward WR a bit more for 100-day stability
         capped_pf = min(profit_factor, 10.0)
-        score = capped_pf * win_rate * max(0, 1 - dd_pct / 100)
+        score = capped_pf * (win_rate ** 1.2) * max(0, 1 - dd_pct / 100)
 
         # --- Pattern stats ---
         patterns_found = {}
@@ -490,7 +515,7 @@ class PracticeEngine:
             losses=losses,
             win_rate=round(win_rate, 4),
             profit_factor=round(profit_factor, 3),
-            max_drawdown=round(dd_pct, 2),
+            max_drawdown=dd_pct,
             total_r=round(total_r, 2),
             expectancy=round(expectancy, 4),
             avg_rr=round(avg_rr, 2),
@@ -500,6 +525,7 @@ class PracticeEngine:
             pattern_win_rates=pattern_win_rates,
             news_stats=news_stats,
         )
+
 
     # ────────────────────────────────────────────────────────────────
     # Private: _get_strategy

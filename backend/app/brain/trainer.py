@@ -161,7 +161,7 @@ class Trainer:
         ส่งค่า indicator ปัจจุบัน → MemoryStore จะคำนวณ EMA ให้อัตโนมัติ.
 
         Args:
-            symbol: สัญลักษณ์ เช่น XAUUSDm
+            symbol: สัญลักษณ์ เช่น XAUUSDc
             regime: สภาวะตลาด เช่น TRENDING_UP
             session: session เช่น NY
             atr: ค่า ATR ปัจจุบัน (ส่งเป็น volatility)
@@ -180,3 +180,43 @@ class Trainer:
             trend_strength=adx,
         )
         logger.debug("regime_stats_updated", extra={"symbol": symbol, "regime": regime})
+
+    # ────────────────────────────────────────────────────────────────
+    # run_shadow_training_cycle — learn from shadow trades
+    # ────────────────────────────────────────────────────────────────
+
+    async def run_shadow_training_cycle(
+        self,
+        candles_by_symbol: dict | None = None,
+    ) -> dict:
+        """
+        Evaluate shadow trades and feed results into Brain.
+
+        Steps:
+            1. Use ShadowEvaluator to check pending shadow trades
+            2. Walk forward through candles to determine WIN/LOSS
+            3. Feed results into MemoryStore
+            4. Refresh scoreboard
+
+        Returns:
+            dict: {"evaluated": N, "wins": N, "losses": N, "expired": N}
+        """
+        if not self.db:
+            return {"evaluated": 0, "wins": 0, "losses": 0, "expired": 0}
+
+        try:
+            from app.brain.shadow_evaluator import ShadowEvaluator
+
+            evaluator = ShadowEvaluator(db=self.db, memory=self.memory)
+            result = evaluator.evaluate_pending(
+                candles_by_symbol=candles_by_symbol
+            )
+            evaluator.clear_cache()
+            return result
+
+        except Exception as e:
+            logger.error("shadow_training_error", extra={
+                "error": str(e),
+            }, exc_info=True)
+            return {"evaluated": 0, "wins": 0, "losses": 0, "expired": 0}
+

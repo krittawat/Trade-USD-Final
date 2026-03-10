@@ -1,0 +1,23 @@
+[
+    {
+        "symbol": "BTCUSDm",
+        "win_rate": 50.0,
+        "pf": 0.71,
+        "pnl": -7.25,
+        "max_dd": 21.0
+    },
+    {
+        "symbol": "USOILm",
+        "win_rate": 0,
+        "pf": 0,
+        "pnl": 0,
+        "max_dd": 0
+    },
+    {
+        "symbol": "XAUUSDm",
+        "win_rate": 0,
+        "pf": 0,
+        "pnl": 0,
+        "max_dd": 0
+    }
+]

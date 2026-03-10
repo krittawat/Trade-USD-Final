@@ -57,6 +57,7 @@ class BaseStrategy(ABC):
         candles: pd.DataFrame,
         profile: SymbolProfile,
         regime: RegimeType = RegimeType.UNKNOWN,
+        pressure: dict | None = None,
     ) -> Decision:
         """
         วิเคราะห์ข้อมูลและสร้าง Decision.
@@ -65,6 +66,8 @@ class BaseStrategy(ABC):
             candles: DataFrame ของแท่งเทียน [time, open, high, low, close, volume]
             profile: ข้อมูลสัญลักษณ์
             regime: สภาวะตลาดปัจจุบัน
+            pressure: ข้อมูลแรงซื้อ/แรงขายจาก TickVolumeAnalyzer
+                      {buying_pressure, selling_pressure, score, is_climax, ad_line_trend}
         
         Returns:
             Decision: คำสั่ง BUY/SELL/HOLD พร้อมเหตุผลและ SL/TP

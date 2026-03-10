@@ -23,15 +23,15 @@ REFRESH_INTERVAL_HOURS = 6
 # Currencies affected by each symbol
 SYMBOL_CURRENCIES = {
     "XAUUSD": ["USD"],
-    "XAUUSDm": ["USD"],
+    "XAUUSDc": ["USD"],
     "EURUSD": ["EUR", "USD"],
-    "EURUSDm": ["EUR", "USD"],
+    "EURUSDc": ["EUR", "USD"],
     "GBPUSD": ["GBP", "USD"],
-    "GBPUSDm": ["GBP", "USD"],
+    "GBPUSDc": ["GBP", "USD"],
     "USDJPY": ["USD", "JPY"],
-    "USDJPYm": ["USD", "JPY"],
+    "USDJPYc": ["USD", "JPY"],
     "BTCUSD": ["USD"],
-    "BTCUSDm": ["USD"],
+    "BTCUSDc": ["USD"],
 }
 
 

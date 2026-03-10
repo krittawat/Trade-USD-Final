@@ -1,0 +1,100 @@
+﻿DEBUG: Script Start
+22:49:42 > sqlite_connected  path=backend\data\sqlite\trading.db
+22:49:42 > sqlite_migrations_complete
+22:49:42 > param_loader_loaded  count=4
+22:49:42 > param_loader_initialized
+
+๐€ Tunning btc_elite on BTCUSDc | Combinations: 81
+22:49:42 > strategy_registry_loaded  count=26
+22:49:42 > strategy_registered  strategy_name=gold_evolution
+22:49:42 > strategy_from_db_registered  strat=gold_evolution  asset_class=gold  priority=120
+22:49:42 > params_from_db  XAUUSDc  strat=gold_elite
+22:49:42 > strategy_registered  strategy_name=gold_elite
+22:49:42 > strategy_from_db_registered  strat=gold_elite  asset_class=gold  priority=115
+22:49:42 > params_from_db  XAGUSDc  strat=silver_elite
+22:49:42 > strategy_registered  strategy_name=silver_elite
+22:49:42 > strategy_from_db_registered  strat=silver_elite  asset_class=silver  priority=115
+22:49:42 > strategy_registered  strategy_name=GOLD_SCALP_PRO
+22:49:42 > strategy_from_db_registered  strat=gold_scalp_pro  asset_class=gold  priority=110
+22:49:42 ! strategy_register_from_db_failed  strat=ema210_mtf_bounce  error=No module named 'app.strategy.templates.ema210_mtf_bounce'  module_path=app.strategy.templates.ema210_mtf_bounce  class_name=Ema210MtfBounceStrategy
+Traceback (most recent call last):
+  File "D:\VibeCode\Trade\backend\app\strategy\factory.py", line 130, in auto_register
+    reg_count = self._register_from_registry(row)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\VibeCode\Trade\backend\app\strategy\factory.py", line 222, in _register_from_registry
+    mod = importlib.import_module(module_path)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\PCMD\AppData\Local\Programs\Python\Python312\Lib\importlib\__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1324, in _find_and_load_unlocked
+ModuleNotFoundError: No module named 'app.strategy.templates.ema210_mtf_bounce'
+22:49:42 > strategy_registered  strategy_name=ema180_mtf_fvg
+22:49:42 > strategy_from_db_registered  strat=ema180_mtf_fvg  asset_class=*  priority=105
+22:49:42 > params_from_db  BTCUSDc  strat=btc_elite
+22:49:42 > strategy_registered  strategy_name=btc_elite
+22:49:42 > strategy_from_db_registered  strat=btc_elite  asset_class=crypto  priority=100
+22:49:42 > strategy_registered  strategy_name=ai_mtf_v3
+22:49:42 > strategy_from_db_registered  strat=ai_mtf_v3  asset_class=*  priority=99
+22:49:42 > strategy_registered  strategy_name=gold_ai_dragon
+22:49:42 > strategy_from_db_registered  strat=gold_ai_dragon  asset_class=gold  priority=98
+22:49:42 > strategy_registered  strategy_name=btc_momentum
+22:49:42 > strategy_from_db_registered  strat=btc_momentum  asset_class=crypto  priority=95
+22:49:42 > strategy_registered  strategy_name=btc_mean_reversion
+22:49:42 > strategy_from_db_registered  strat=btc_mean_reversion  asset_class=crypto  priority=92
+22:49:42 > strategy_registered  strategy_name=forex_precision
+22:49:42 > strategy_from_db_registered  strat=forex_precision  asset_class=forex  priority=90
+22:49:42 > strategy_registered  strategy_name=gold_precision
+22:49:42 > strategy_from_db_registered  strat=gold_precision  asset_class=gold  priority=85
+22:49:42 > smart_strategy_audit_loaded  path=D:\VibeCode\Trade\backend\reports\forensics\audit_data.json
+22:49:42 > strategy_registered  strategy_name=fx_sniper
+22:49:42 > strategy_from_db_registered  strat=fx_sniper  asset_class=forex  priority=85
+22:49:42 > strategy_registered  strategy_name=SILVER_MEAN_REV
+22:49:42 > strategy_from_db_registered  strat=silver_mean_rev  asset_class=silver  priority=85
+22:49:42 > strategy_registered  strategy_name=jtg_zone_fvg
+22:49:42 > strategy_from_db_registered  strat=jtg_zone_fvg  asset_class=gold  priority=85
+22:49:42 > strategy_registered  strategy_name=gold_break_checklist
+22:49:42 > strategy_from_db_registered  strat=gold_break_checklist  asset_class=gold  priority=80
+22:49:42 > strategy_registered  strategy_name=usdjpy_elite
+22:49:42 > strategy_from_db_registered  strat=usdjpy_elite  asset_class=forex  priority=80
+22:49:42 > params_from_db  XAUUSDc  strat=gold_smart_money
+22:49:42 > strategy_registered  strategy_name=gold_smart_money
+22:49:42 > strategy_from_db_registered  strat=gold_smart_money  asset_class=gold  priority=75
+22:49:42 > strategy_registered  strategy_name=gold_session_breakout
+22:49:42 > strategy_from_db_registered  strat=gold_session_breakout  asset_class=gold  priority=70
+22:49:42 > strategy_registered  strategy_name=gold_silver_wr60
+22:49:42 > strategy_from_db_registered  strat=gold_silver_wr60  asset_class=gold  priority=60
+22:49:42 > strategy_registered  strategy_name=sniper_pro
+22:49:42 > strategy_from_db_registered  strat=sniper_pro  asset_class=*  priority=55
+22:49:42 > strategy_registered  strategy_name=scalping
+22:49:42 > strategy_from_db_registered  strat=scalping  asset_class=*  priority=50
+22:49:42 > strategy_registered  strategy_name=sniper
+22:49:42 > strategy_from_db_registered  strat=sniper  asset_class=*  priority=50
+22:49:42 > strategy_registered  strategy_name=trend_rider
+22:49:42 > strategy_from_db_registered  strat=trend_rider  asset_class=*  priority=50
+22:49:42 > strategy_registered  strategy_name=ranging_sniper
+22:49:42 > strategy_from_db_registered  strat=ranging_sniper  asset_class=*  priority=50
+22:49:42 > strategy_registered  strategy_name=ai_deep_v4
+22:49:42 > params_from_db  BTCUSDc  strat=btc_elite
+22:49:42 > strategy_registered  strategy_name=candlestick_structure
+22:49:42 > smart_strategy_audit_loaded  path=D:\VibeCode\Trade\backend\reports\forensics\audit_data.json
+22:49:42 > params_from_db  XAUUSDc  strat=gold_elite
+22:49:42 > params_from_db  XAUUSDc  strat=gold_smart_money
+22:49:42 > strategy_registered  strategy_name=pullback_v2
+22:49:42 > params_from_db  XAGUSDc  strat=silver_elite
+22:49:42 > strategy_registered  strategy_name=silver_evolution
+22:49:42 > new_strategies_discovered  count=4
+22:49:42 > strategy_registry_auto_seeded  seeded=25  total_registry=26
+22:49:42 > strategy_registered  strategy_name=audusd_trend
+22:49:42 > strategy_registered  strategy_name=eurusd_precision
+22:49:42 > strategy_registered  strategy_name=gbpusd_trend
+22:49:42 > strategy_registered  strategy_name=nzdusd_trend
+22:49:42 > strategy_registered  strategy_name=forex_precision
+22:49:42 > strategy_registered  strategy_name=usdjpy_pair
+22:49:42 > strategy_registered  strategy_name=xauusd_pro
+22:49:42 > routing_cache_loaded  entries=10
+22:49:42 > auto_register_complete  total_registered=36  routing_entries=10
+DEBUG: Inside run()
+DEBUG: Processing 8632 bars...

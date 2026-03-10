@@ -16,6 +16,7 @@ Logic:
 
 import pandas as pd
 import pandas_ta as ta
+import app.analysis.indicators as ind
 
 from app.core.logging import get_logger
 from app.domain.enums import Action, RegimeType
@@ -28,11 +29,21 @@ logger = get_logger(__name__)
 EMA_TREND = 200      # EMA สำหรับ trend direction
 RSI_PERIOD = 14      # RSI period
 ATR_PERIOD = 14      # ATR period
-ATR_SL_MULT = 2.0    # SL = ATR × mult (กว้างกว่า scalping)
-RR_TARGET = 3.0      # เป้า RR
+ATR_SL_MULT = 2.0    # SL = ATR × mult (default — Gold/BTC)
+RR_TARGET = 2.5      # เป้า RR (balanced: lower than 3.0 for higher WR, but not too low)
+
+# --- Per-Asset-Class SL Adjustment ---
+FOREX_PREFIXES = ("EUR", "GBP", "USD", "AUD", "NZD", "CAD", "CHF", "JPY")
+
+def _sniper_sl_mult(symbol: str) -> float:
+    """Forex M15 needs wider SL to survive noise — 3.0 vs default 2.0."""
+    s = symbol.upper()
+    if any(s.startswith(p) for p in FOREX_PREFIXES):
+        return 3.0   # Forex M15: wider SL
+    return ATR_SL_MULT  # Gold/BTC default
 SWING_LOOKBACK = 10  # lookback bars สำหรับ swing high/low
 FVG_MIN_GAP = 0.5    # ขนาด FVG ขั้นต่ำ (หน่วย ATR)
-MIN_CONFIDENCE = 0.60 # confidence ขั้นต่ำ (สูงกว่า scalping)
+MIN_CONFIDENCE = 0.58 # confidence ขั้นต่ำ (slightly lower for more entries with added confluence)
 
 
 class SniperStrategy(BaseStrategy):
@@ -55,6 +66,7 @@ class SniperStrategy(BaseStrategy):
         candles: pd.DataFrame,
         profile: SymbolProfile,
         regime: RegimeType = RegimeType.UNKNOWN,
+        **kwargs,
     ) -> Decision:
         """
         วิเคราะห์สัญญาณ sniper — หา high-precision entry.
@@ -67,17 +79,23 @@ class SniperStrategy(BaseStrategy):
         """
         symbol = profile.symbol
 
+        # --- อ่านค่า Overrides จาก kwargs (AI Brain) ---
+        ema_trend_len = kwargs.get("ema_fast", EMA_TREND)  # Aliasing ema_fast to ema_trend for sniper
+        rsi_len = kwargs.get("rsi_period", RSI_PERIOD)
+        atr_len = kwargs.get("atr_period", ATR_PERIOD)
+        min_conf = kwargs.get("confidence_min", MIN_CONFIDENCE)
+
         # --- ตรวจข้อมูล ---
-        if candles is None or len(candles) < EMA_TREND + 5:
+        if candles is None or len(candles) < ema_trend_len + 5:
             return self.create_hold(
                 symbol=symbol,
-                reason=f"ข้อมูลไม่เพียงพอ (ต้อง {EMA_TREND + 5} bars, มี {len(candles) if candles is not None else 0})",
+                reason=f"ข้อมูลไม่เพียงพอ (ต้อง {ema_trend_len + 5} bars, มี {len(candles) if candles is not None else 0})",
             )
 
         # --- Indicators ---
-        ema200 = ta.ema(candles["close"], length=EMA_TREND)
-        rsi = ta.rsi(candles["close"], length=RSI_PERIOD)
-        atr = ta.atr(candles["high"], candles["low"], candles["close"], length=ATR_PERIOD)
+        ema200 = ta.ema(candles["close"], length=ema_trend_len)
+        rsi = ta.rsi(candles["close"], length=rsi_len)
+        atr = ta.atr(candles["high"], candles["low"], candles["close"], length=atr_len)
 
         current_close = candles["close"].iloc[-1]
         current_high = candles["high"].iloc[-1]
@@ -142,11 +160,38 @@ class SniperStrategy(BaseStrategy):
         if 40 < rsi_val < 70:
             sell_score += 0.10
 
+        # Volume spike detection (+0.10 per side)
+        if "volume" in candles.columns:
+            vol_ma = candles["volume"].rolling(window=20).mean()
+            if vol_ma is not None and not pd.isna(vol_ma.iloc[-1]) and vol_ma.iloc[-1] > 0:
+                vol_ratio = candles["volume"].iloc[-1] / vol_ma.iloc[-1]
+                if vol_ratio > 1.5:
+                    buy_score += 0.10
+                    sell_score += 0.10
+
+        # Engulfing candle confirmation (+0.10 per matching side)
+        if len(candles) >= 2:
+            prev_c = candles.iloc[-2]
+            curr_c = candles.iloc[-1]
+            # Bullish engulfing
+            if (prev_c["close"] < prev_c["open"] and
+                curr_c["close"] > curr_c["open"] and
+                curr_c["close"] > prev_c["open"] and
+                curr_c["open"] <= prev_c["close"]):
+                buy_score += 0.10
+                reasons.append("Bullish engulfing")
+            # Bearish engulfing
+            if (prev_c["close"] > prev_c["open"] and
+                curr_c["close"] < curr_c["open"] and
+                curr_c["close"] < prev_c["open"] and
+                curr_c["open"] >= prev_c["close"]):
+                sell_score += 0.10
+
         # --- ตัดสินใจ ---
-        if buy_score > sell_score and buy_score >= MIN_CONFIDENCE:
+        if buy_score > sell_score and buy_score >= min_conf:
             action = Action.BUY
             confidence = min(1.0, buy_score)
-        elif sell_score > buy_score and sell_score >= MIN_CONFIDENCE:
+        elif sell_score > buy_score and sell_score >= min_conf:
             action = Action.SELL
             confidence = min(1.0, sell_score)
             reasons = [
@@ -160,7 +205,7 @@ class SniperStrategy(BaseStrategy):
         else:
             return self.create_hold(
                 symbol=symbol,
-                reason=f"Confluence ไม่เพียงพอ (buy={buy_score:.2f}, sell={sell_score:.2f}, min={MIN_CONFIDENCE})",
+                reason=f"Confluence ไม่เพียงพอ (buy={buy_score:.2f}, sell={sell_score:.2f}, min={min_conf})",
             )
 
         # --- Regime bonus ---
@@ -168,8 +213,12 @@ class SniperStrategy(BaseStrategy):
             confidence = min(1.0, confidence + 0.05)
 
         # --- ATR-based SL/TP (wide SL, 3R TP) ---
-        sl_distance = atr_val * ATR_SL_MULT
-        tp_distance = sl_distance * RR_TARGET
+        default_sl_mult = _sniper_sl_mult(symbol)
+        sl_mult = kwargs.get("sl_atr_mult", default_sl_mult)
+        rr_target = kwargs.get("rr_target", RR_TARGET)
+
+        sl_distance = atr_val * sl_mult
+        tp_distance = sl_distance * rr_target
 
         if action == Action.BUY:
             # SL ใต้ swing low ล่าสุด (ถ้ามี) หรือ ATR-based
@@ -184,7 +233,7 @@ class SniperStrategy(BaseStrategy):
         rr = tp_distance / sl_distance if sl_distance > 0 else 0
         reason_text = "; ".join(reasons)
 
-        logger.info("sniper_signal", extra={
+        logger.debug("sniper_signal", extra={
             "symbol": symbol, "action": action.value,
             "confidence": round(confidence, 3),
             "rr": round(rr, 1), "atr": round(atr_val, profile.digits),

@@ -1,0 +1,57 @@
+{
+  "symbol": "XAUUSD",
+  "bars": 8640,
+  "timestamp": "2026-03-05T02:23:57.946621",
+  "v1": {
+    "version": "V1_Original",
+    "trades": 472,
+    "wins": 418,
+    "losses": 54,
+    "win_rate": 88.6,
+    "pf": 13.52,
+    "max_dd": 3.87,
+    "net_pnl": 3892.2394,
+    "final_equity": 3992.24,
+    "avg_conf": 0.95,
+    "bull_bear_stats": {
+      "BULL": 1688,
+      "BEAR": 2439,
+      "NEUTRAL": 119
+    },
+    "per_side": {
+      "BUY": 308,
+      "SELL": 164
+    },
+    "per_result": {
+      "TP": 418,
+      "SL": 54,
+      "TIMEOUT": 0
+    }
+  },
+  "v2": {
+    "version": "V2_BullBear",
+    "trades": 495,
+    "wins": 456,
+    "losses": 39,
+    "win_rate": 92.1,
+    "pf": 20.84,
+    "max_dd": 3.77,
+    "net_pnl": 4393.2125,
+    "final_equity": 4493.21,
+    "avg_conf": 0.95,
+    "bull_bear_stats": {
+      "BULL": 1669,
+      "BEAR": 2243,
+      "NEUTRAL": 127
+    },
+    "per_side": {
+      "BUY": 285,
+      "SELL": 210
+    },
+    "per_result": {
+      "TP": 456,
+      "SL": 39,
+      "TIMEOUT": 0
+    }
+  }
+}

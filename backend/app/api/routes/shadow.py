@@ -54,3 +54,27 @@ async def compare_shadow_vs_live(
         "hours": hours,
         "symbol": symbol,
     }
+
+
+@router.get("/scoreboard")
+async def get_shadow_scoreboard(
+    request: Request,
+    symbol: str | None = Query(None, description="Filter by symbol"),
+):
+    """
+    Shadow Scoreboard — strategy ranking จากผลเทรด shadow.
+
+    Bot ทดสอบทุก strategy แบบ virtual แล้วให้คะแนน:
+    win_rate, total_pnl, wins, losses per strategy/symbol/regime
+    """
+    db = request.app.state.db
+    if not db:
+        return {"scoreboard": [], "total": 0}
+
+    scoreboard = db.get_shadow_scoreboard(symbol=symbol)
+    return {
+        "scoreboard": scoreboard,
+        "total": len(scoreboard),
+        "symbol": symbol,
+    }
+

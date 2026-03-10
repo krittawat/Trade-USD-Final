@@ -16,8 +16,13 @@ from app.core.logging import get_logger
 from app.api.schemas import (
     ModifySLRequest, ModifyTPRequest, TrailingStopRequest,
     ProfitLockRequest, GhostGuardRequest, PositionResponse,
+    TPManagementRequest,
 )
-from app.risk.trade_manager import TrailingConfig, ProfitLockConfig, ProfitLockTier
+from app.risk.trailing import TrailingConfig
+from app.risk.trade_manager import (
+    ProfitLockConfig, ProfitLockTier,
+    TPConfig, TPTier,
+)
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -28,12 +33,22 @@ router = APIRouter()
 @router.get("/positions", response_model=list[PositionResponse])
 async def list_positions(request: Request):
     """ดึง positions ทั้งหมดจาก MT5 พร้อม trailing/profit-lock status."""
-    mt5 = getattr(request.app.state, "mt5", None)
-    if not mt5 or not mt5.is_connected():
-        raise HTTPException(status_code=503, detail="MT5 not connected")
-
-    positions = mt5.get_positions()
-    loop = getattr(request.app.state, "master_loop", None)
+    master_loop = getattr(request.app.state, "master_loop", None)
+    positions = []
+    
+    if master_loop and hasattr(master_loop, "adapter") and master_loop.adapter:
+         positions = master_loop.adapter.get_positions()
+    else:
+         # Fallback (Legacy/Error case)
+         mt5 = getattr(request.app.state, "mt5", None)
+         if mt5 and mt5.is_connected():
+             positions = mt5.get_positions()
+         if not positions and not master_loop:
+             # If completely failed to get source
+             pass 
+             
+    # Clean up empty list if fallback failed
+    positions = positions or []
 
     result = []
     for pos in positions:
@@ -46,6 +61,9 @@ async def list_positions(request: Request):
         # ─── Ghost Guard status ───
         ghost_status = {"active": False, "virtual_sl": 0.0, "virtual_tp": 0.0}
 
+        # ─── TP management status ───
+        tp_status = {"active": False, "mode": "off", "highest_tier": -1}
+
         if loop:
             if hasattr(loop, "trailing_manager"):
                 trailing_status = loop.trailing_manager.get_status(ticket)
@@ -53,6 +71,8 @@ async def list_positions(request: Request):
                 profit_lock_status = loop.profit_lock_manager.get_status(ticket)
             if hasattr(loop, "ghost_guard"):
                 ghost_status = loop.ghost_guard.get_status(ticket)
+            if hasattr(loop, "tp_manager"):
+                tp_status = loop.tp_manager.get_status(ticket)
 
         result.append(PositionResponse(
             ticket=ticket,
@@ -71,6 +91,9 @@ async def list_positions(request: Request):
             ghost_active=ghost_status.get("active", False),
             ghost_sl=ghost_status.get("virtual_sl", 0.0),
             ghost_tp=ghost_status.get("virtual_tp", 0.0),
+            tp_active=tp_status.get("active", False),
+            tp_mode=tp_status.get("mode", "off"),
+            tp_tier_hit=tp_status.get("highest_tier", -1),
         ))
 
     return result
@@ -81,11 +104,13 @@ async def list_positions(request: Request):
 @router.post("/positions/{ticket}/sl")
 async def modify_sl(ticket: int, body: ModifySLRequest, request: Request):
     """แก้ Stop Loss ของ position."""
-    mt5 = getattr(request.app.state, "mt5", None)
-    if not mt5 or not mt5.is_connected():
-        raise HTTPException(status_code=503, detail="MT5 not connected")
+    master_loop = getattr(request.app.state, "master_loop", None)
+    adapter = master_loop.adapter if master_loop else None
+    
+    if not adapter:
+        raise HTTPException(status_code=503, detail="Trading system not ready")
 
-    success = mt5.modify_sl(ticket, body.sl)
+    success = adapter.modify_sl(ticket, body.sl)
     if not success:
         raise HTTPException(status_code=400, detail=f"Failed to modify SL for ticket {ticket}")
 
@@ -100,22 +125,29 @@ async def modify_sl(ticket: int, body: ModifySLRequest, request: Request):
 @router.post("/positions/{ticket}/tp")
 async def modify_tp(ticket: int, body: ModifyTPRequest, request: Request):
     """แก้ Take Profit ของ position."""
-    mt5 = getattr(request.app.state, "mt5", None)
-    if not mt5 or not mt5.is_connected():
-        raise HTTPException(status_code=503, detail="MT5 not connected")
+    master_loop = getattr(request.app.state, "master_loop", None)
+    adapter = master_loop.adapter if master_loop else None
+    
+    if not adapter:
+        raise HTTPException(status_code=503, detail="Trading system not ready")
 
-    # modify_sl รองรับ new_tp parameter อยู่แล้ว
-    # ดึง SL ปัจจุบันก่อน แล้วส่งพร้อม TP ใหม่
-    positions = mt5.get_positions()
+    # Adapter accepts modify_sl with tp arg usually.
+    # We need to get current SL to keep it.
+    
+    positions = adapter.get_positions()
     current_sl = 0.0
+    found = False
     for pos in positions:
-        if pos["ticket"] == ticket:
-            current_sl = pos["sl"]
+         # pos is dict from adapter.get_positions()
+        if pos.get("ticket") == ticket:
+            current_sl = pos.get("sl", 0.0)
+            found = True
             break
-    else:
+            
+    if not found:
         raise HTTPException(status_code=404, detail=f"Position {ticket} not found")
 
-    success = mt5.modify_sl(ticket, current_sl, body.tp)
+    success = adapter.modify_sl(ticket, current_sl, body.tp)
     if not success:
         raise HTTPException(status_code=400, detail=f"Failed to modify TP for ticket {ticket}")
 
@@ -143,6 +175,11 @@ async def set_trailing(ticket: int, body: TrailingStopRequest, request: Request)
         atr_multiplier=body.atr_multiplier,
         fixed_points=body.fixed_points,
         activation_r=body.activation_r,
+        step_r=body.step_r,
+        chandelier_period=body.chandelier_period,
+        adaptive_min_mult=body.adaptive_min_mult,
+        adaptive_max_mult=body.adaptive_max_mult,
+        adaptive_ramp_r=body.adaptive_ramp_r,
     )
     loop.trailing_manager.set_trailing(ticket, config)
 
@@ -179,26 +216,88 @@ async def set_profit_lock(ticket: int, body: ProfitLockRequest, request: Request
 @router.post("/positions/{ticket}/close")
 async def close_position(ticket: int, request: Request):
     """ปิด position ด้วย ticket number."""
-    mt5 = getattr(request.app.state, "mt5", None)
-    if not mt5 or not mt5.is_connected():
-        raise HTTPException(status_code=503, detail="MT5 not connected")
+    master_loop = getattr(request.app.state, "master_loop", None)
+    adapter = master_loop.adapter if master_loop else None
+    
+    if not adapter:
+        raise HTTPException(status_code=503, detail="Trading system not ready")
 
-    success = mt5.close_position(ticket, reason="API_CLOSE")
+    success = adapter.close_position(ticket, reason="API_CLOSE")
     if not success:
         raise HTTPException(status_code=400, detail=f"Failed to close position {ticket}")
 
-    # ─── Cleanup trailing/profit-lock configs ───
+    # ─── Cleanup trailing/profit-lock/tp configs ───
     loop = getattr(request.app.state, "master_loop", None)
     if loop:
         if hasattr(loop, "trailing_manager"):
             loop.trailing_manager.remove_trailing(ticket)
         if hasattr(loop, "profit_lock_manager"):
             loop.profit_lock_manager.remove_profit_lock(ticket)
+        if hasattr(loop, "tp_manager"):
+            loop.tp_manager.remove_tp(ticket)
 
     logger.info("api_close_position", extra={
         "ticket": ticket, "stage": "api", "result": "ok",
     })
     return {"ticket": ticket, "status": "closed"}
+
+
+# ─── POST /api/positions/{ticket}/tp-management — ตั้ง TP management ───
+
+@router.post("/positions/{ticket}/tp-management")
+async def set_tp_management(ticket: int, body: TPManagementRequest, request: Request):
+    """ตั้ง/ปิด TP management สำหรับ position.
+
+    Modes:
+        - partial: ปิดบางส่วนตาม R-target + ย้าย SL อัตโนมัติ
+        - dynamic: ย้าย TP ตาม ATR × multiplier
+        - trailing_tp: TP ถอยมาเมื่อราคาใกล้แล้วย้อน
+    """
+    loop = getattr(request.app.state, "master_loop", None)
+    if not loop or not hasattr(loop, "tp_manager"):
+        raise HTTPException(status_code=503, detail="Trading system not ready")
+
+    if body.mode == "off":
+        loop.tp_manager.remove_tp(ticket)
+        return {"ticket": ticket, "tp_management": "off", "status": "ok"}
+
+    # ดึง volume จาก position จริง
+    mt5 = getattr(request.app.state, "mt5", None)
+    volume = 0.0
+    if mt5:
+        positions = mt5.get_positions()
+        for pos in positions:
+            if pos["ticket"] == ticket:
+                volume = pos["volume"]
+                break
+
+    tiers = [
+        TPTier(
+            r_target=t.r_target,
+            close_pct=t.close_pct,
+            move_sl_to=t.move_sl_to if t.move_sl_to != "none" else None,
+        )
+        for t in body.tiers
+    ] if body.tiers else None
+
+    config = TPConfig(
+        mode=body.mode,
+        tiers=tiers if tiers else TPConfig().tiers,  # fallback to defaults
+        atr_tp_multiplier=body.atr_tp_multiplier,
+        trailing_tp_atr_distance=body.trailing_tp_atr_distance,
+    )
+    loop.tp_manager.set_tp(ticket, config, volume=volume)
+
+    logger.info("api_set_tp_management", extra={
+        "ticket": ticket, "mode": body.mode,
+        "tiers": len(config.tiers), "stage": "api", "result": "ok",
+    })
+    return {
+        "ticket": ticket,
+        "tp_management": body.mode,
+        "tiers": len(config.tiers),
+        "status": "ok",
+    }
 
 
 # ─── POST /api/positions/{ticket}/ghost — ตั้ง Ghost Guard (Virtual SL/TP) ───

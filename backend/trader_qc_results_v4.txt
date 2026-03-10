@@ -1,0 +1,58 @@
+============================================================
+  OPUS QC Suite V4 โ€” Production + OPUS Governor
+  2026-03-09 12:16:11
+============================================================
+
+[1/9] Config Validation
+  PASS  Config loads correctly: All keys present
+  PASS  Risk limits within safe range: risk/trade=1.5%, daily_cap=5.0%
+
+[2/9] Feature Engineering
+  PASS  Volatility features compute: ATR computed (187 valid rows)
+  PASS  Structure features compute: Swings found: 24 highs, 23 lows
+
+[3/9] Regime Classifier
+  PASS  Regime classification works: Regime=Weak Trend (Down), Confidence=0.67
+
+[4/9] Liquidity Detector
+  PASS  Liquidity event detection works: Events detected: 0
+
+[5/9] Risk Gate (Survival)
+  PASS  Blocks signal without SL: Blocked reasons: ['BLOCKED: Mandatory Stop Loss missing.']
+  PASS  Blocks when daily loss exceeded: Blocked reasons: ["BLOCKED: Max daily loss '5.0%' exceeded (35.00%)."]
+  PASS  Blocks after 3 consecutive losses: Blocked reasons: ['BLOCKED: Reached daily max consecutive losses (3).']
+  PASS  Blocks during news window: Blocked reasons: ['BLOCKED: Trading inside ยฑ30-min HIGH-impact news window.']
+  PASS  Allows valid signal: Valid signal should pass
+
+[6/9] Strategy Pipeline
+๐”’ COOLDOWN SET: XAUUSD locked until 05:31:14 UTC โ€” ATR deviation 2.50x > 2.2x threshold
+โ ๏ธ [GOV] Margin เธ•เนเธณ (40%) -> เธฅเธ” Lot x0.5
+โ ๏ธ [GOV] Floating DD เธชเธนเธ (16.7%) -> เธฅเธ” Lot x0.5
+โ ๏ธ [GOV] Floating DD เธชเธนเธ (62.0%) -> เธฅเธ” Lot x0.5
+โ ๏ธ [GOV] Floating DD เธชเธนเธ (16.7%) -> เธฅเธ” Lot x0.5
+  PASS  Full pipeline signal generation: No signal (regime=Weak Trend (Down)) โ€” valid no-trade
+
+[7/9] SQLite Storage
+  PASS  SQLite CRUD operations: Trades recorded: 1
+
+[8/9] V2 Confluence & EMA
+  PASS  EMA features compute: EMA computed (200 valid rows)
+  PASS  Trend killer requires confluence: Candle alone correctly blocked
+  PASS  Confidence threshold enforced: Min confidence = 0.58
+
+[9/9] Extra Aggressive Directives
+  PASS  Liquidity min score >= 0.70: Min liquidity event score = 0.75
+  PASS  Daily target HARD STOP: Correctly blocked | Reasons: ['[STOP] Daily target $60.00 reached (PnL=$600.00). NO MORE TRADES TODAY.']
+  PASS  ATR deviation cooldown trigger: ATR 2.5x: blocked=True, cooldown_set=True | Reasons: ['[COOLDOWN] ATR deviation 2.50x > 2.2x - no trades for 15m']
+  PASS  Pyramid risk limits valid: addon_risk=0.3R, max_total=5.0%, min_conf=0.7, min_r=0.5, max_per_pos=2
+
+[10/10] OPUS Governor
+  PASS  OPUS margin block: Margin 40%: blocked=True, reason=MARGIN CRITICAL: 40% < 50%
+  PASS  OPUS defensive mode: DD=62%: defensive=True, reasons=['Floating DD 62.0% > 4.0%']
+  PASS  OPUS lot multiplier: Normal mult=1.0, Stress mult=0.5
+  PASS  OPUS status output: All 8 fields present
+
+============================================================
+  RESULT: 24/24 passed (100%)
+  QC PASSED - Ready for Backtest
+============================================================

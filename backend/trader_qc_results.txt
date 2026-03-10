@@ -1,0 +1,87 @@
+Traceback (most recent call last):
+  File "D:\VibeCode\Trade\backend\trader\scripts\qc_suite.py", line 23, in check
+    print(f"  {status}  {name}: {detail}")
+  File "C:\Users\PCMD\AppData\Local\Programs\Python\Python312\Lib\encodings\cp874.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\xb1' in position 78: character maps to <undefined>
+============================================================
+  OPUS QC Suite V4 — Production + OPUS Governor
+  2026-03-09 12:13:56
+============================================================
+
+[1/9] Config Validation
+  PASS  Config loads correctly: All keys present
+  PASS  Risk limits within safe range: risk/trade=1.5%, daily_cap=5.0%
+
+[2/9] Feature Engineering
+  PASS  Volatility features compute: ATR computed (187 valid rows)
+  PASS  Structure features compute: Swings found: 24 highs, 23 lows
+
+[3/9] Regime Classifier
+  PASS  Regime classification works: Regime=Weak Trend (Down), Confidence=0.67
+
+[4/9] Liquidity Detector
+  PASS  Liquidity event detection works: Events detected: 0
+
+[5/9] Risk Gate (Survival)
+  PASS  Blocks signal without SL: Blocked reasons: ['BLOCKED: Mandatory Stop Loss missing.']
+  PASS  Blocks when daily loss exceeded: Blocked reasons: ["BLOCKED: Max daily loss '5.0%' exceeded (35.00%)."]
+  PASS  Blocks after 3 consecutive losses: Blocked reasons: ['BLOCKED: Reached daily max consecutive losses (3).']
+  FAIL  Blocks during news window: 'charmap' codec can't encode character '\xb1' in position 78: character maps to <undefined>
+  PASS  Allows valid signal: Valid signal should pass
+
+[6/9] Strategy Pipeline
+Traceback (most recent call last):
+  File "D:\VibeCode\Trade\backend\trader\scripts\qc_suite.py", line 20, in check
+    ok, detail = func()
+                 ^^^^^^
+  File "D:\VibeCode\Trade\backend\trader\scripts\qc_suite.py", line 171, in test_strategy_selector
+    from backend.trader.strategy.selector import select_and_generate_signal
+  File "d:\VibeCode/Trade\backend\trader\strategy\selector.py", line 37, in <module>
+    from .btc_oracle import signal_btc_oracle
+  File "d:\VibeCode/Trade\backend\trader\strategy\btc_oracle.py", line 1, in <module>
+    import requests
+ModuleNotFoundError: No module named 'requests'
+Traceback (most recent call last):
+  File "D:\VibeCode\Trade\backend\trader\scripts\qc_suite.py", line 20, in check
+    ok, detail = func()
+                 ^^^^^^
+  File "D:\VibeCode\Trade\backend\trader\scripts\qc_suite.py", line 241, in test_confidence_threshold
+    from backend.trader.strategy.selector import MIN_CONFIDENCE
+  File "d:\VibeCode/Trade\backend\trader\strategy\selector.py", line 37, in <module>
+    from .btc_oracle import signal_btc_oracle
+  File "d:\VibeCode/Trade\backend\trader\strategy\btc_oracle.py", line 1, in <module>
+    import requests
+ModuleNotFoundError: No module named 'requests'
+๐”’ COOLDOWN SET: XAUUSD locked until 05:28:58 UTC โ€” ATR deviation 2.50x > 2.2x threshold
+โ ๏ธ [GOV] Margin เธ•เนเธณ (40%) -> เธฅเธ” Lot x0.5
+  FAIL  Full pipeline signal generation: No module named 'requests'
+
+[7/9] SQLite Storage
+  PASS  SQLite CRUD operations: Trades recorded: 1
+
+[8/9] V2 Confluence & EMA
+  PASS  EMA features compute: EMA computed (200 valid rows)
+  PASS  Trend killer requires confluence: Candle alone correctly blocked
+  FAIL  Confidence threshold enforced: No module named 'requests'
+
+[9/9] Extra Aggressive Directives
+  PASS  Liquidity min score >= 0.70: Min liquidity event score = 0.75
+  PASS  Daily target HARD STOP: Correctly blocked | Reasons: ['[STOP] Daily target $60.00 reached (PnL=$600.00). NO MORE TRADES TODAY.']
+  PASS  ATR deviation cooldown trigger: ATR 2.5x: blocked=True, cooldown_set=True | Reasons: ['[COOLDOWN] ATR deviation 2.50x > 2.2x - no trades for 15m']
+  PASS  Pyramid risk limits valid: addon_risk=0.3R, max_total=5.0%, min_conf=0.7, min_r=0.5, max_per_pos=2
+
+[10/10] OPUS Governor
+  PASS  OPUS margin block: Margin 40%: blocked=True, reason=MARGIN CRITICAL: 40% < 50%
+  PASS  OPUS defensive mode: DD=62%: defensive=True, reasons=['Floating DD 62.0% > 4.0%']
+  PASS  OPUS lot multiplier: Normal mult=1.0, Stress mult=0.5
+  PASS  OPUS status output: All 8 fields present
+
+============================================================
+  RESULT: 22/25 passed (88%)
+  QC FAILED - Fix issues before proceeding
+============================================================
+โ ๏ธ [GOV] Floating DD เธชเธนเธ (16.7%) -> เธฅเธ” Lot x0.5
+โ ๏ธ [GOV] Floating DD เธชเธนเธ (62.0%) -> เธฅเธ” Lot x0.5
+โ ๏ธ [GOV] Floating DD เธชเธนเธ (16.7%) -> เธฅเธ” Lot x0.5

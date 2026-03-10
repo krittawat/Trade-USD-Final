@@ -16,7 +16,7 @@ from app.domain.models import AccountState
 logger = get_logger(__name__)
 
 
-def check_floating_dd(account: AccountState, max_dd_pct: float = 10.0) -> bool:
+def check_floating_dd(account: AccountState, symbol: str = "", max_dd_pct: float = 10.0) -> bool:
     """
     ตรวจ floating drawdown.
     
@@ -26,8 +26,20 @@ def check_floating_dd(account: AccountState, max_dd_pct: float = 10.0) -> bool:
     """
     if account.equity <= 0:
         return False
+    
     dd_pct = abs(account.floating_pl) / account.equity * 100
     safe = dd_pct <= max_dd_pct
+    
+    # --- SURVIVOR MODE BYPASS ---
+    # หากเป็น XAU หรือ BTC อนุญาตให้เทรดเพื่อกู้พอร์ตแม้ DD จะสูง (แต่ต้องคุม Lot เล็ก)
+    if not safe and symbol.upper() in ["XAUUSD", "XAUUSDM", "BTCUSD", "BTCUSDM"]:
+        logger.info("survivor_mode_bypass", extra={
+            "symbol": symbol,
+            "dd_pct": round(dd_pct, 2),
+            "action": "ALLOW_RECOVERY_TRADE"
+        })
+        return True
+
     if not safe:
         logger.warning("floating_dd_exceeded", extra={
             "dd_pct": round(dd_pct, 2),
@@ -38,27 +50,53 @@ def check_floating_dd(account: AccountState, max_dd_pct: float = 10.0) -> bool:
     return safe
 
 
+def check_floating_dd_usd(account: AccountState, max_dd_usd: float = 1400.0) -> bool:
+    """
+    ตรวจ floating drawdown เป็นยอดเงินบัญชี (Account Currency).
+    
+    Returns:
+        True = ปลอดภัย (DD ≤ limit)
+        False = อันตราย (DD > limit) → ห้ามเปิดเทรดใหม่
+    """
+    if max_dd_usd <= 0:
+        return True
+        
+    # floating_pl is negative when in drawdown
+    safe = account.floating_pl >= -max_dd_usd
+    if not safe:
+        logger.warning("floating_dd_usd_exceeded", extra={
+            "floating_pl": account.floating_pl,
+            "max_dd_usd": max_dd_usd,
+        })
+    return safe
+
+
 def check_capital_floor(
     account: AccountState,
     floor_pct: float = 90.0,
 ) -> bool:
     """
-    ตรวจ capital floor — ปกป้อง 90% ของทุนตั้งต้น.
+    ตรวจ capital floor (High-Water Mark + Capital Shield) — ปกป้อง 90% ของทุนสูงสุดหรือตั้งต้น.
     
     Returns:
         True = equity ยังอยู่เหนือ floor
         False = equity ต่ำกว่า floor → ห้ามเทรด
     """
-    if account.initial_balance <= 0:
-        return True  # ยังไม่มี initial balance → ข้าม
+    if account.initial_balance <= 0 and account.peak_equity <= 0:
+        return True  # ยังไม่มี reference balance → ข้าม
 
-    floor = account.initial_balance * (floor_pct / 100)
+    # ใช้ Peak Equity เป็นฐานคิดถ้ามันโตขึ้น (Trailing Capital Floor)
+    base_balance = account.peak_equity if account.peak_equity > account.initial_balance else account.initial_balance
+    floor = base_balance * (floor_pct / 100)
+    
     safe = account.equity >= floor
     if not safe:
         logger.critical("capital_floor_breach", extra={
             "equity": account.equity,
             "floor": floor,
+            "peak_equity": account.peak_equity,
             "initial_balance": account.initial_balance,
+            "base_balance_used": base_balance,
         })
     return safe
 

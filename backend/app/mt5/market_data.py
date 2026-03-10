@@ -7,6 +7,7 @@ Market Data — ดึงข้อมูลแท่งเทียนและ 
 """
 
 import pandas as pd
+import time
 from typing import Optional
 
 import MetaTrader5 as mt5
@@ -15,8 +16,8 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-# ขนาด window สูงสุด (จำนวนแท่งเทียน) — ป้องกันใช้ RAM เกิน
-MAX_CANDLE_WINDOW = 500
+# ขนาด window สูงสุด (จำนวนแท่งเทียน) — ปรองกันการใช้ RAM เกิน (100k bars ≈ 8MB)
+MAX_CANDLE_WINDOW = 100000
 
 # ─── Cycle-level terminal cache ───
 # ป้องกัน mt5.terminal_info() ถูกเรียกซ้ำ 20+ ครั้ง/cycle
@@ -47,11 +48,23 @@ def _is_terminal_ready(cycle: int) -> bool:
 # Timeframe mapping
 TIMEFRAME_MAP = {
     "M1": mt5.TIMEFRAME_M1,
+    "M2": mt5.TIMEFRAME_M2,
+    "M3": mt5.TIMEFRAME_M3,
+    "M4": mt5.TIMEFRAME_M4,
     "M5": mt5.TIMEFRAME_M5,
+    "M6": mt5.TIMEFRAME_M6,
+    "M10": mt5.TIMEFRAME_M10,
+    "M12": mt5.TIMEFRAME_M12,
     "M15": mt5.TIMEFRAME_M15,
+    "M20": mt5.TIMEFRAME_M20,
     "M30": mt5.TIMEFRAME_M30,
     "H1": mt5.TIMEFRAME_H1,
+    "H2": mt5.TIMEFRAME_H2,
+    "H3": mt5.TIMEFRAME_H3,
     "H4": mt5.TIMEFRAME_H4,
+    "H6": mt5.TIMEFRAME_H6,
+    "H8": mt5.TIMEFRAME_H8,
+    "H12": mt5.TIMEFRAME_H12,
     "D1": mt5.TIMEFRAME_D1,
     "W1": mt5.TIMEFRAME_W1,
     "MN1": mt5.TIMEFRAME_MN1,
@@ -68,7 +81,7 @@ def fetch_candles(
     ดึงแท่งเทียนจาก MT5 จริง.
 
     Args:
-        symbol: สัญลักษณ์เทรด เช่น XAUUSDm
+        symbol: สัญลักษณ์เทรด เช่น XAUUSDc
         timeframe: ไทม์เฟรม เช่น M1, M5, H1, D1
         count: จำนวนแท่ง (จำกัดไม่เกิน MAX_CANDLE_WINDOW)
         cycle: cycle number สำหรับ terminal cache
@@ -97,11 +110,28 @@ def fetch_candles(
         logger.error("invalid_timeframe", extra={"timeframe": timeframe, "symbol": symbol})
         return None
 
-    # ดึง candles จริงจาก MT5
-    rates = mt5.copy_rates_from_pos(symbol, tf, 0, count)
+    # Ensure symbol is selected / visible in Market Watch
+    if not mt5.symbol_select(symbol, True):
+        logger.error("symbol_select_failed", extra={"symbol": symbol})
+        return None
+
+    # ดึง candles จริงจาก MT5 ด้วย retry logic สำหรับ "Terminal: Call failed" (-1)
+    rates = None
+    for attempt in range(3):
+        rates = mt5.copy_rates_from_pos(symbol, tf, 0, count)
+        if rates is not None and len(rates) > 0:
+            break
+        
+        err = mt5.last_error()
+        if attempt < 2:
+            logger.warning("fetch_retry", extra={
+                "symbol": symbol, "timeframe": timeframe, 
+                "attempt": attempt + 1, "error": str(err)
+            })
+            time.sleep(0.5)
 
     if rates is None or len(rates) == 0:
-        logger.warning("no_candle_data", extra={
+        logger.error("NO_CANDLE_DATA", extra={
             "symbol": symbol,
             "timeframe": timeframe,
             "count": count,
@@ -161,3 +191,40 @@ def fetch_ticks(
 
     logger.debug("ticks_fetched", extra={"symbol": symbol, "count": len(df)})
     return df
+
+
+def fetch_ticks_since(
+    symbol: str, 
+    from_time_ms: int
+) -> list[dict]:
+    """
+    Fetch ticks starting from a specific timestamp (milliseconds).
+    Used for incremental ingestion to QuestDB.
+    
+    Args:
+        symbol: Symbol name
+        from_time_ms: Start timestamp in milliseconds
+        
+    Returns:
+        List of dicts ready for ingestion
+    """
+    # MT5 copy_ticks_from args: symbol, from_date (datetime or int ms), count, flags
+    ticks = mt5.copy_ticks_from(symbol, from_time_ms + 1, 5000, mt5.COPY_TICKS_ALL)
+    
+    if ticks is None or len(ticks) == 0:
+        return []
+
+    # Convert to list of dicts directly (faster than DataFrame for simple iteration)
+    # ticks is a numpy record array
+    result = []
+    for t in ticks:
+        result.append({
+            "time": float(t['time']),  # seconds
+            "bid": float(t['bid']),
+            "ask": float(t['ask']),
+            "last": float(t['last']),
+            "volume": int(t['volume']),
+            "flags": int(t['flags']),
+        })
+        
+    return result

@@ -1,0 +1,1 @@
+{"version": "v2", "accuracy": 0.544, "val_accuracy": 0.54, "loss": 0.6589, "val_loss": 0.6602, "trained_at": "2026-02-18T12:39:13.953159+00:00", "samples": 9866, "epochs": 46, "best_val_loss": 0.6602}

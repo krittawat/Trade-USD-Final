@@ -1,0 +1,39 @@
+{
+  "approved": true,
+  "checks": [
+    {
+      "check": "Minimum Trades",
+      "value": 9,
+      "threshold": 5,
+      "pass": true
+    },
+    {
+      "check": "Win Rate (%)",
+      "value": 55.6,
+      "threshold": 50.0,
+      "pass": true
+    },
+    {
+      "check": "Profit Factor",
+      "value": 1.37,
+      "threshold": 1.3,
+      "pass": true
+    },
+    {
+      "check": "Max Drawdown (%)",
+      "value": 1.37,
+      "threshold": 6.0,
+      "pass": true
+    }
+  ],
+  "metrics": {
+    "total_trades": 9,
+    "wins": 5,
+    "losses": 4,
+    "win_rate": 55.6,
+    "profit_factor": 1.37,
+    "max_dd": 1.37,
+    "net_pnl": 8.64,
+    "final_equity": 1008.64
+  }
+}

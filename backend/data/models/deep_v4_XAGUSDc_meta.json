@@ -1,0 +1,36 @@
+{
+  "version": "v4_transformer_gru",
+  "symbol": "XAGUSDc",
+  "input_size": 55,
+  "hidden_size": 128,
+  "num_classes": 3,
+  "best_val_loss": 1.0068,
+  "best_val_acc": 0.4813,
+  "per_class_metrics": {
+    "BUY": {
+      "precision": 0.4445,
+      "recall": 0.6866,
+      "f1": 0.5396
+    },
+    "HOLD": {
+      "precision": 0.05,
+      "recall": 0.0075,
+      "f1": 0.0131
+    },
+    "SELL": {
+      "precision": 0.4377,
+      "recall": 0.2524,
+      "f1": 0.3202
+    }
+  },
+  "train_samples": 7892,
+  "val_samples": 1974,
+  "class_distribution": {
+    "BUY": 3781,
+    "HOLD": 450,
+    "SELL": 3661
+  },
+  "epochs_run": 17,
+  "training_time_sec": 2053.3,
+  "trained_at": "2026-02-22 09:10 UTC"
+}

@@ -1,0 +1,57 @@
+{
+  "symbol": "BTCUSDm",
+  "bars": 8640,
+  "timestamp": "2026-03-05T02:19:26.659277",
+  "v1": {
+    "version": "V1_Original",
+    "trades": 430,
+    "wins": 389,
+    "losses": 41,
+    "win_rate": 90.5,
+    "pf": 12.67,
+    "max_dd": 3.94,
+    "net_pnl": 596.0407,
+    "final_equity": 696.04,
+    "avg_conf": 0.95,
+    "bull_bear_stats": {
+      "BULL": 1968,
+      "BEAR": 2401,
+      "NEUTRAL": 254
+    },
+    "per_side": {
+      "BUY": 198,
+      "SELL": 232
+    },
+    "per_result": {
+      "TP": 389,
+      "SL": 41,
+      "TIMEOUT": 0
+    }
+  },
+  "v2": {
+    "version": "V2_BullBear",
+    "trades": 452,
+    "wins": 418,
+    "losses": 34,
+    "win_rate": 92.5,
+    "pf": 18.26,
+    "max_dd": 3.62,
+    "net_pnl": 660.8241,
+    "final_equity": 760.83,
+    "avg_conf": 0.95,
+    "bull_bear_stats": {
+      "BULL": 1789,
+      "BEAR": 2311,
+      "NEUTRAL": 322
+    },
+    "per_side": {
+      "BUY": 211,
+      "SELL": 241
+    },
+    "per_result": {
+      "TP": 418,
+      "SL": 34,
+      "TIMEOUT": 0
+    }
+  }
+}

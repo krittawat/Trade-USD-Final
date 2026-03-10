@@ -1,4 +1,4 @@
-﻿"""
+"""
 Gold Scalp Pro Strategy (Sniper Mode with Haikin Ashi)
 ======================================================
 High-Frequency Scalping for XAUUSD M5
@@ -12,14 +12,13 @@ God-Tier Enhancements (v5.0):
 3. Vitality Integration: Uses Vitality Score to boost confidence.
 """
 import pandas as pd
-import pandas_ta as ta
-import numpy as np
+
+import app.analysis.indicators as ind
 import logging
 from typing import Optional, Dict, Any
 from .base_strategy import BaseStrategy, StrategyDecision
 import MetaTrader5 as mt5
 from app.risk.anti_hunt_sl import apply_anti_hunt_sl
-import pandas_ta as ta
 
 # Optional config service (graceful fallback to hardcoded defaults)
 _config_service = None
@@ -110,6 +109,25 @@ class GoldScalpProStrategy(BaseStrategy):
         """
         if df is None or len(df) < 100:
             return StrategyDecision(signal="NO_TRADE", reason="Insufficient data")
+
+        # --- Unified Brain Check (Phase A) ---
+        regime_context = kwargs.get("regime_context")
+        if regime_context and not regime_context.actionable:
+            return StrategyDecision(signal="NO_TRADE", reason=f"Brain Block: {regime_context.reason}")
+        
+        # Risk Parameters
+        self.risk_per_trade = 0.02  # 2% equity risk
+        self.max_daily_loss = 0.05
+        self.max_drawdown = 0.10
+        
+        # --- NEW: Volume Filter (Allow Brain Override) ---
+        # Default to class attributes if not in kwargs
+        self.use_volume_filter = kwargs.get('use_volume_filter', getattr(self, 'use_volume_filter', True))
+        self.min_rvol = float(kwargs.get('min_rvol', getattr(self, 'min_rvol', 1.0)))
+        
+        # Toggles
+        self.use_supertrend = True
+        self.use_vwap = True
         
         # Ensure Indicators
         df = self._ensure_indicators(df)
@@ -121,7 +139,15 @@ class GoldScalpProStrategy(BaseStrategy):
         close = float(r['close'])
         
         vwap = float(r.get('vwap', close))
-        st_dir = float(r.get(f'SUPERT_d_{self.SUPERTREND_LEN}_{self.SUPERTREND_MUL}', 0)) # 1=Bullish, -1=Bearish
+        st_dir_raw = r.get(
+            f'SUPERT_d_{self.SUPERTREND_LEN}_{self.SUPERTREND_MUL}',
+            r.get(f'SUPERTd_{self.SUPERTREND_LEN}_{self.SUPERTREND_MUL}', 0),
+        )
+        # Handle both string ('up'/'down') and numeric (1/-1) formats
+        if isinstance(st_dir_raw, str):
+            st_dir = 1.0 if st_dir_raw.lower() == 'up' else -1.0
+        else:
+            st_dir = float(st_dir_raw) if st_dir_raw is not None else 0.0
         rsi = float(r.get('rsi', 50))
         adx = float(r.get('adx', 0))
         atr = float(r.get('atr', 3.0)) 
@@ -133,16 +159,29 @@ class GoldScalpProStrategy(BaseStrategy):
         ha_bullish = ha_close > ha_open
         ha_bearish = ha_close < ha_open
         
-        # Filters
+        # Validate Indicators
         valid_indicators = not (pd.isna(vwap) or pd.isna(st_dir) or pd.isna(rsi))
         if not valid_indicators:
             return StrategyDecision(signal="NO_TRADE", reason="Loading indicators...")
-        
+            
         # ========================================
         # ADAPTIVE MARKET REGIME DETECTION
         # ========================================
         regime = "UNKNOWN"
         atr_avg = df['atr'].rolling(20).mean().iloc[-1] if 'atr' in df.columns else atr
+        if pd.isna(atr_avg) or atr_avg <= 0:
+            atr_avg = atr
+        
+        # Override with Unified Brain Context if available
+        if regime_context:
+            regime = regime_context.regime.value
+            
+            # 1. BLOCK HIGH VOLATILITY (Phase F Optimization)
+            if regime == "HIGH_VOLATILITY":
+                 return StrategyDecision(signal="NO_TRADE", reason="High Volatility Block")
+
+        # ... (rest of logic) ...
+
         atr_ratio = atr / atr_avg if atr_avg > 0 else 1.0
         
         is_trending = adx > 25
@@ -173,6 +212,7 @@ class GoldScalpProStrategy(BaseStrategy):
         # SESSION-AWARE PARAMETER TUNING (System #3)
         # ========================================
         # ปรับ params ตาม session — ASIA vol ต่ำ ต้อง strict กว่า
+        reasons = []
         session = kwargs.get('session', '')
         if session == 'ASIA':
             # ASIA: vol ต่ำ, spread กว้าง → strict filter, SL แคบ
@@ -200,8 +240,8 @@ class GoldScalpProStrategy(BaseStrategy):
 
         if h1_candles is not None and len(h1_candles) >= 200:
             try:
-                ema_50 = ta.ema(h1_candles['close'], length=50)
-                ema_200 = ta.ema(h1_candles['close'], length=200)
+                ema_50 = ind.ema(h1_candles['close'], length=50)
+                ema_200 = ind.ema(h1_candles['close'], length=200)
                 if ema_50 is not None and ema_200 is not None:
                     e50 = float(ema_50.iloc[-1])
                     e200 = float(ema_200.iloc[-1])
@@ -218,7 +258,6 @@ class GoldScalpProStrategy(BaseStrategy):
         # Scoring System
         buy_score = 0
         sell_score = 0
-        reasons = []
         
         # 1. SuperTrend Filter (Main Trend) - 25 points
         if st_dir == 1:
@@ -276,6 +315,45 @@ class GoldScalpProStrategy(BaseStrategy):
         elif macd_line < macd_signal:
              sell_score += 10
 
+        # ----------------------------------------
+        # 1. Volume Filter (Gatekeeper)
+        # ----------------------------------------
+        # RVOL = Current Volume / Average Volume
+        vol_col = 'tick_volume' if 'tick_volume' in df.columns else 'volume'
+        if vol_col not in df.columns:
+            return StrategyDecision(signal="NO_TRADE", reason="No volume data", confidence=0.0)
+
+        vol_avg = float(df['vol_avg_20'].iloc[-1]) if 'vol_avg_20' in df.columns else float(df[vol_col].rolling(20).mean().iloc[-1])
+        if pd.isna(vol_avg) or vol_avg <= 0:
+            vol_avg = float(df[vol_col].tail(min(len(df), 20)).mean())
+        if pd.isna(vol_avg) or vol_avg <= 0:
+            return StrategyDecision(signal="NO_TRADE", reason="Volume average invalid", confidence=0.0)
+        curr_vol = float(r.get(vol_col, 0.0))
+        rvol = curr_vol / (vol_avg + 1e-9)
+        
+        # If Volume is too low, we are in "Dead Market" -> BLOCK ENTRY
+        if self.use_volume_filter and rvol < self.min_rvol:
+            # We allow holding existing positions, but NO NEW ENTRIES
+            # Unless it's a very strong trend continuation (optional, but keep simple for now)
+            return StrategyDecision(
+                signal="NO_TRADE",
+                reason=f"LowVol(RVOL={rvol:.2f}<{self.min_rvol})",
+                confidence=0.0
+            )
+
+        # ----------------------------------------
+        # 2. Smart Money / Volume Spike Boost
+        # ----------------------------------------
+        # If High Volume + Directional -> Boost Confidence
+        open_ = float(r['open']) # Define open_ for use in this block
+        if rvol > 2.0:
+            if close > open_:
+                buy_score += 15
+                reasons.append(f"SmartMoney(Vol x{rvol:.1f})")
+            else:
+                sell_score += 15
+                reasons.append(f"SmartMoney(Vol x{rvol:.1f})")
+
         # ─── MTF Penalty: ลด score counter-trend ตาม H1 EMA ───
         if h1_trend == "DOWN":
             buy_score = int(buy_score * 0.7)
@@ -284,6 +362,28 @@ class GoldScalpProStrategy(BaseStrategy):
             sell_score = int(sell_score * 0.7)
             reasons.append("[H1:↑ penalty]")
 
+        # ─── Phase F: Gold Bias Correction (Apply after scoring) ───
+        # Gold has natural bullish bias. In "TRENDING_DOWN", we only sell if momentum is VERY strong.
+        is_down_regime = (regime == "TRENDING_DOWN")
+        strong_momentum = (adx > 30)
+        rsi_bearish = (rsi < 50)
+        
+        if is_down_regime:
+             # Gold Bias: Moderate sell penalty (0.5x) — best tested config
+             if not (strong_momentum and rsi_bearish):
+                 sell_score = int(sell_score * 0.5) 
+                 reasons.append("[WeakDown:SellPenalty]")
+
+        # ---------------------------------------------------------
+        # 8. CASH COW MODE (Efficiency Boost)
+        # ---------------------------------------------------------
+        # If in Stable Trend + Low Volatility, use tighter TP for high win rate
+        is_cash_cow = (regime == "TRENDING_STABLE") and (adx > 20 and adx < 30)
+        
+        if is_cash_cow:
+             adaptive_tp_mult = 1.5 # Quick Scalp (Cash Cow)
+             reasons.append("[CashCow]")
+             
         # Decision Logic
         signal = "NO_TRADE"
         sl = 0.0
@@ -330,6 +430,13 @@ class GoldScalpProStrategy(BaseStrategy):
             elif active_score >= 80:
                  risk_pct = self.RISK_STANDARD
             
+            # --- 9. RSI PULSE EXIT (Smart Exit) ---
+            # Suggest monitoring RSI for early exit
+            if signal == "BUY" and rsi > 65:
+                 reasons.append("[RSI_High:PulseWatch]")
+            elif signal == "SELL" and rsi < 35:
+                 reasons.append("[RSI_Low:PulseWatch]")
+
             conf = active_score / 100.0
             reason_str = f"[PRO] Score:{active_score} | {' '.join(reasons)}"
             
@@ -347,9 +454,10 @@ class GoldScalpProStrategy(BaseStrategy):
 
     def check_exit(self, df: pd.DataFrame, position: Any, **kwargs) -> Optional[Dict[str, Any]]:
         """
-        God-Tier Exit Logic:
-        1. Premium Chandelier Exit (Trailing Stop)
-        2. Multi-Tier Profit Locking
+        [DEPRECATED] Exit Logic is now handled centrally by app.risk.trailing.TrailingManager
+        (Phase C: Ratchet Trailing Stop implementation)
+        
+        This method is kept for reference/backtesting simulation only.
         """
         if df is None or len(df) < 50:
             return None
@@ -445,7 +553,14 @@ class GoldScalpProStrategy(BaseStrategy):
         
         # --- 3. HARD EXIT (Reversal Signal) ---
         # Check for reversal if price crosses SuperTrend
-        st_dir = float(last.get(f'SUPERT_d_{self.SUPERTREND_LEN}_{self.SUPERTREND_MUL}', 0))
+        st_dir_raw = last.get(
+            f'SUPERT_d_{self.SUPERTREND_LEN}_{self.SUPERTREND_MUL}',
+            last.get(f'SUPERTd_{self.SUPERTREND_LEN}_{self.SUPERTREND_MUL}', 0),
+        )
+        if isinstance(st_dir_raw, str):
+            st_dir = 1.0 if st_dir_raw.lower() == 'up' else -1.0
+        else:
+            st_dir = float(st_dir_raw) if st_dir_raw is not None else 0.0
         if (direction == "BUY" and st_dir == -1) or (direction == "SELL" and st_dir == 1):
              return {"action": "CLOSE", "reason": "SuperTrend Reversal"}
 
@@ -467,10 +582,19 @@ class GoldScalpProStrategy(BaseStrategy):
              df['Vitality'] = (df['ADX_14'] / 100 * 50) + 50 # Base 50 + Trend Bonus
              
         # SuperTrend
-        if f'SUPERT_{self.SUPERTREND_LEN}_{self.SUPERTREND_MUL}.0' not in df.columns:
-            st = ta.supertrend(df['high'], df['low'], df['close'], length=self.SUPERTREND_LEN, multiplier=self.SUPERTREND_MUL)
+        st_dir_col = f'SUPERT_d_{self.SUPERTREND_LEN}_{self.SUPERTREND_MUL}'
+        st_dir_alt_col = f'SUPERTd_{self.SUPERTREND_LEN}_{self.SUPERTREND_MUL}'
+        if st_dir_col not in df.columns and st_dir_alt_col not in df.columns:
+            st = ind.supertrend(df['high'], df['low'], df['close'], length=self.SUPERTREND_LEN, multiplier=self.SUPERTREND_MUL)
             if st is not None:
                 df = pd.concat([df, st], axis=1)
+
+        # Volume SMA for RVOL
+        if 'vol_avg_20' not in df.columns:
+            v_col = 'tick_volume' if 'tick_volume' in df.columns else 'volume'
+            if v_col in df.columns:
+                df['vol_avg_20'] = ind.sma(df[v_col], length=20)
+                df['vol_avg_20'] = df['vol_avg_20'].fillna(df[v_col])
         
         # VWAP
         if 'vwap' not in df.columns:
@@ -493,20 +617,20 @@ class GoldScalpProStrategy(BaseStrategy):
         
         # HAIKIN ASHI
         if 'HA_close' not in df.columns:
-            ha = ta.ha(df['open'], df['high'], df['low'], df['close'])
+            ha = ind.heiken_ashi(df['open'], df['high'], df['low'], df['close'])
             if ha is not None:
-                df['HA_open'] = ha['HA_open']
-                df['HA_high'] = ha['HA_high']
-                df['HA_low'] = ha['HA_low']
-                df['HA_close'] = ha['HA_close']
+                df['HA_open'] = ha['HA_Open']
+                df['HA_high'] = ha['HA_High']
+                df['HA_low'] = ha['HA_Low']
+                df['HA_close'] = ha['HA_Close']
 
         # RSI
         if 'rsi' not in df.columns:
-            df['rsi'] = ta.rsi(df['close'], length=self.RSI_PERIOD)
+            df['rsi'] = ind.rsi(df['close'], length=self.RSI_PERIOD)
             
         # ADX
         if 'adx' not in df.columns:
-            adx = ta.adx(df['high'], df['low'], df['close'], length=self.ADX_PERIOD)
+            adx = ind.adx(df['high'], df['low'], df['close'], length=self.ADX_PERIOD)
             if adx is not None:
                 endpoint = f"ADX_{self.ADX_PERIOD}"
                 if endpoint in adx.columns:
@@ -514,11 +638,11 @@ class GoldScalpProStrategy(BaseStrategy):
         
         # ATR
         if 'atr' not in df.columns:
-            df['atr'] = ta.atr(df['high'], df['low'], df['close'], length=self.ATR_PERIOD)
+            df['atr'] = ind.atr(df['high'], df['low'], df['close'], length=self.ATR_PERIOD)
 
         # MACD (12, 26, 9)
         if 'MACD_12_26_9' not in df.columns:
-            macd = ta.macd(df['close'], fast=12, slow=26, signal=9)
+            macd = ind.macd(df['close'], fast=12, slow=26, signal=9)
             if macd is not None:
                 df = pd.concat([df, macd], axis=1)
             

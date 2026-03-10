@@ -1,0 +1,25 @@
+{
+  "symbol": "BTCUSDm",
+  "optimized_at": "2026-03-07T16:37:09.267448",
+  "days_tested": 30,
+  "n_trials": 40,
+  "best_score": 10.5,
+  "best_params": {
+    "smc_pivot": 11,
+    "ssl_baseline": 110,
+    "tp_mult": 1.5,
+    "mss_displacement": 1.4000000000000001,
+    "adx_threshold": 23,
+    "risk_per_trade": 0.016,
+    "max_dd_limit": 0.04
+  },
+  "best_metrics": {
+    "win_rate": 45.5,
+    "profit_factor": 0.78,
+    "max_dd_pct": 4.0,
+    "total_trades": 11,
+    "total_profit_usd": -163.95,
+    "final_equity": 9836.05
+  },
+  "top_5_valid": []
+}

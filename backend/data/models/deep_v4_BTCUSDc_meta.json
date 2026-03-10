@@ -1,0 +1,36 @@
+{
+  "version": "v4_transformer_gru",
+  "symbol": "BTCUSDc",
+  "input_size": 55,
+  "hidden_size": 128,
+  "num_classes": 3,
+  "best_val_loss": 1.0139,
+  "best_val_acc": 0.4676,
+  "per_class_metrics": {
+    "BUY": {
+      "precision": 0.4696,
+      "recall": 0.2451,
+      "f1": 0.3221
+    },
+    "HOLD": {
+      "precision": 0.146,
+      "recall": 0.3133,
+      "f1": 0.1992
+    },
+    "SELL": {
+      "precision": 0.4834,
+      "recall": 0.6242,
+      "f1": 0.5448
+    }
+  },
+  "train_samples": 7892,
+  "val_samples": 1974,
+  "class_distribution": {
+    "BUY": 3492,
+    "HOLD": 527,
+    "SELL": 3873
+  },
+  "epochs_run": 14,
+  "training_time_sec": 1600.1,
+  "trained_at": "2026-02-22 09:39 UTC"
+}

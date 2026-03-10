@@ -50,7 +50,7 @@ class TradeAnalyzer:
             logger.warning("trade_analyzer_no_db", extra={"path": self.db_path})
             return {"total_trades": 0, "message": "No database found"}
 
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, check_same_thread=False)
         conn.row_factory = sqlite3.Row
 
         try:

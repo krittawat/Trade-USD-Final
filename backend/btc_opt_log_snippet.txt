@@ -1,0 +1,20 @@
+﻿DEBUG: Script Start
+22:49:42 > sqlite_connected  path=backend\data\sqlite\trading.db
+22:49:42 > sqlite_migrations_complete
+22:49:42 > param_loader_loaded  count=4
+22:49:42 > param_loader_initialized
+
+๐€ Tunning btc_elite on BTCUSDc | Combinations: 81
+22:49:42 > strategy_registry_loaded  count=26
+22:49:42 > strategy_registered  strategy_name=gold_evolution
+22:49:42 > strategy_from_db_registered  strat=gold_evolution  asset_class=gold  priority=120
+22:49:42 > params_from_db  XAUUSDc  strat=gold_elite
+22:49:42 > strategy_registered  strategy_name=gold_elite
+22:49:42 > strategy_from_db_registered  strat=gold_elite  asset_class=gold  priority=115
+22:49:42 > params_from_db  XAGUSDc  strat=silver_elite
+22:49:42 > strategy_registered  strategy_name=silver_elite
+22:49:42 > strategy_from_db_registered  strat=silver_elite  asset_class=silver  priority=115
+22:49:42 > strategy_registered  strategy_name=GOLD_SCALP_PRO
+22:49:42 > strategy_from_db_registered  strat=gold_scalp_pro  asset_class=gold  priority=110
+22:49:42 ! strategy_register_from_db_failed  strat=ema210_mtf_bounce  error=No module named 'app.strategy.templates.ema210_mtf_bounce'  module_path=app.strategy.templates.ema210_mtf_bounce  class_name=Ema210MtfBounceStrategy
+Traceback (most recent call last):

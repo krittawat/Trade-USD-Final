@@ -22,6 +22,19 @@ from pydantic import BaseModel, Field
 from app.domain.enums import Action, BlockReason, MarketSession, RegimeType
 
 
+
+class RegimeContext(BaseModel):
+    """
+    บริบทสภาวะตลาด (Unified Regime Context).
+    รวมข้อมูลจากทุก indicator เพื่อบอกว่าตลาดเป็นแบบไหนและ 'เทรดได้ไหม'.
+    """
+    regime: RegimeType                 # ENUM: TRENDING_UP, RANGING, FAKEOUT, etc.
+    actionable: bool = True            # True = เทรดได้, False = อันตราย (เช่น sideways/fakeout)
+    score: float = 0.5                 # ความชัดเจนของ regime (0.0 - 1.0)
+    reason: str = ""                   # เหตุผลประกอบ
+    details: dict = Field(default_factory=dict) # ค่า indicator (adx, wick_ratio, etc.)
+
+
 class Decision(BaseModel):
     """
     ผลลัพธ์จาก Strategy — บอกว่าจะทำอะไร.
@@ -36,10 +49,12 @@ class Decision(BaseModel):
     stop_loss: Optional[float] = None          # ราคา SL (ต้องมีถ้า BUY/SELL)
     take_profit: Optional[float] = None        # ราคา TP
     risk_reward_ratio: Optional[float] = None  # อัตราส่วน R:R
+    risk_pct: Optional[float] = None           # ความเสี่ยงที่ strategy แนะนำ (ถ้ามี)
     strategy_name: str = ""                    # ชื่อ strategy ที่ใช้
     timeframe: str = "M5"                      # ไทม์เฟรม
     tags: list[str] = Field(default_factory=list)    # แท็กเพิ่มเติม
     debug: dict = Field(default_factory=dict)        # ข้อมูล debug (indicator values ฯลฯ)
+    extra: dict = Field(default_factory=dict)        # Metadata เพิ่มเติม (เช่น be_activation_r)
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -57,9 +72,12 @@ class OrderPlan(BaseModel):
     take_profit: Optional[float]   # ราคา TP
     risk_usd: float                # ความเสี่ยงจริงเป็น USD
     risk_pct: float                # ความเสี่ยงเป็น % ของ equity
-    entry_price: Optional[float] = None  # ราคาเข้า (สำหรับ limit order)
+    ENTRY_PRICE: Optional[float] = None
     strategy_name: str = ""
-    comment: str = ""              # comment ที่จะใส่ในออเดอร์ MT5
+    comment: str = ""
+    trailing_config: dict = Field(default_factory=dict)
+    magic: Optional[int] = None
+    ghost_protocol: bool = False  # Stealth mode (virtual SL/TP in memory)
 
 
 class GateResult(BaseModel):
@@ -108,6 +126,14 @@ class AccountState(BaseModel):
     open_positions: int = 0    # จำนวนออเดอร์ที่เปิดอยู่
     daily_pl: float = 0.0      # กำไร/ขาดทุนวันนี้
     initial_balance: float = 0.0  # ยอดเงินตั้งต้น (สำหรับคำนวณ capital floor)
+    peak_equity: float = 0.0   # ยอด equity สูงสุดที่เคยทำได้ (สำหรับ Trailing Capital Floor)
+    leverage: int = 0          # Account leverage (e.g. 500, 2000)
+    
+    # ─── Raw values from MT5 for Telegram display ───
+    real_balance: float = 0.0
+    real_equity: float = 0.0
+    currency: str = "USD"
+
 
 
 class TradeRecord(BaseModel):
@@ -160,7 +186,7 @@ class PracticeResult(BaseModel):
     ใช้เปรียบเทียบ strategies และเลือกตัวที่ดีที่สุด.
     """
     strategy_name: str               # ชื่อ strategy ที่ฝึก
-    symbol: str                      # สัญลักษณ์ เช่น XAUUSDm
+    symbol: str                      # สัญลักษณ์ เช่น XAUUSDc
     params: dict = Field(default_factory=dict)  # parameters ที่ใช้
     total_trades: int = 0            # จำนวนเทรดทั้งหมด
     wins: int = 0                    # จำนวนชนะ
@@ -197,3 +223,41 @@ class TrainingReport(BaseModel):
     best_performers: list[PracticeResult] = Field(default_factory=list)  # ผลดีที่สุด
     params_evolved: dict = Field(default_factory=dict)    # parameters ที่ evolve แล้ว
     improvements: dict = Field(default_factory=dict)      # ปรับปรุงจากรอบก่อน
+
+
+class ExecutionResult(BaseModel):
+    """
+    ผลลัพธ์การส่งคำสั่ง (Execution Output).
+    ใช้ return กลับมาจาก ExecutionAdapter.
+    """
+    ticket: int                  # Order ticket (Real or Paper)
+    price: float                 # Build/Fill price
+    volume: float                # Fill volume
+    retcode: int = 0             # MT5 retcode or 0 for OK
+    comment: str = ""            # Broker comment
+    error: Optional[str] = None  # Error message if failed
+    mode: str = "LIVE"           # Execution mode
+
+
+# ====================================================================
+# Regime Intelligence — ผลวิเคราะห์สภาวะตลาดแบบครบวงจร
+# ====================================================================
+
+class RegimeIntelligence(BaseModel):
+    """
+    ผลวิเคราะห์สภาวะตลาดแบบ Intelligence Core.
+
+    รวมทุกอย่าง: regime, confidence, strategy แนะนำ, risk profile,
+    และเหตุผล — ส่งให้ pipeline ตัดสินใจเทรด.
+    """
+    symbol: str                                         # สัญลักษณ์ เช่น BTCUSD
+    regime: RegimeType = RegimeType.UNKNOWN              # สภาวะตลาดหลัก
+    direction: RegimeType = RegimeType.UNKNOWN           # ทิศทาง (TRENDING_UP/DOWN) สำหรับ compat
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)  # ความมั่นใจ 0-1
+    recommended_strategy: str = ""                       # ชื่อ strategy แนะนำ
+    risk_profile: dict = Field(default_factory=dict)     # {lot_multiplier, sl_atr, tp_rr}
+    trade_allowed: bool = True                           # False = ห้ามเทรด
+    reason: str = ""                                     # เหตุผลประกอบ
+    details: dict = Field(default_factory=dict)          # snapshot ค่า indicator
+
+

@@ -5,18 +5,18 @@ mt5.initialize(r"C:\Program Files\MetaTrader 5\terminal64.exe")
 
 # Common forex pairs to check
 pairs = [
-    "EURUSDm", "EURUSD",
-    "GBPUSDm", "GBPUSD",
-    "USDJPYm", "USDJPY",
-    "AUDUSDm", "AUDUSD",
-    "USDCHFm", "USDCHF",
-    "USDCADm", "USDCAD",
-    "NZDUSDm", "NZDUSD",
-    "EURGBPm", "EURGBP",
-    "EURJPYm", "EURJPY",
-    "GBPJPYm", "GBPJPY",
-    "XAUUSDm", "XAUUSD",
-    "BTCUSDm", "BTCUSD",
+    "EURUSDc", "EURUSD",
+    "GBPUSDc", "GBPUSD",
+    "USDJPYc", "USDJPY",
+    "AUDUSDc", "AUDUSD",
+    "USDCHFc", "USDCHF",
+    "USDCADc", "USDCAD",
+    "NZDUSDc", "NZDUSD",
+    "EURGBPc", "EURGBP",
+    "EURJPYc", "EURJPY",
+    "GBPJPYc", "GBPJPY",
+    "XAUUSDc", "XAUUSD",
+    "BTCUSDc", "BTCUSD",
 ]
 
 print("Available forex symbols on this account:")

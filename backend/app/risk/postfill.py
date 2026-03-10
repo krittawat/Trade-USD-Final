@@ -1,164 +1,101 @@
 """
-Post-Fill Guard — ตรวจสอบ SL หลังเปิดออเดอร์ (REAL IMPLEMENTATION).
+Post-Fill Guard — ผู้พิทักษ์หลังการเข้าออเดอร์.
 
 หน้าที่:
-    - ยืนยันว่า SL ถูกใส่ในออเดอร์จริงๆ
-    - ถ้าไม่มี SL → พยายาม modify ใส่ SL
-    - ถ้า modify ไม่ได้ → ปิดออเดอร์ทันที (emergency close)
-
-กฎเหล็ก:
-    - ห้ามมีออเดอร์เปิดโดยไม่มี SL
-    - ตรวจทุก position ทุกรอบ loop
+1. ตรวจสอบว่าออเดอร์ที่เพิ่งเปิด (หรือเปิดค้างอยู่) มี SL/TP ครบถ้วนตามแผน.
+2. ถ้าไม่มี SL/TP system ต้องพยายาม Modify Position ทันที.
+3. ถ้า Modify ไม่สำเร็จ -> Emergency Close ทันทีเพื่อความปลอดภัย.
 """
 
+import asyncio
+from typing import Optional
+
 from app.core.logging import get_logger
+from app.mt5.client import MT5Client
 
 logger = get_logger(__name__)
 
 
 class PostFillGuard:
     """
-    ตรวจสอบ SL หลังออเดอร์ถูก fill — ใช้ MT5 จริง.
-
-    ถ้า SL หายหรือไม่ถูกต้อง → แก้ไขหรือปิดทิ้ง ห้ามปล่อย.
+    Guard ที่ทำงานหลังจาก order filled.
+    ตรวจสอบความปลอดภัยของ position.
     """
 
-    def __init__(self, mt5_client=None) -> None:
+    def __init__(self, mt5_client: MT5Client):
         self.mt5 = mt5_client
+        self.max_retries = 3
+        self.retry_delay = 1.0 # seconds
 
-    async def verify_all_positions(self) -> list[dict]:
+    async def verify_single(self, ticket: int, expected_sl: float, expected_tp: float = 0.0):
         """
-        ตรวจ SL ของทุก position ที่เปิดอยู่.
-
-        Returns:
-            list[dict]: รายงานผล [{ticket, status, action_taken}]
+        ตรวจสอบ position เดียวแบบเจาะจง (เรียกทันทีหลังได้รับ ticket).
         """
-        results = []
+        if ticket <= 0:
+            return
 
-        if not self.mt5:
-            return results
+        logger.info("postfill_verify_start", extra={"ticket": ticket})
 
+        for attempt in range(1, self.max_retries + 1):
+            await asyncio.sleep(0.5) # รอแป๊บนึงให้ Broker update server side
+
+            # Returns Dict or None
+            position = self.mt5.get_position_by_ticket(ticket)
+            if not position:
+                logger.warning("postfill_pos_not_found", extra={"ticket": ticket, "attempt": attempt})
+                continue
+
+            # ตรวจ SL
+            current_sl = position['sl']
+            current_tp = position['tp']
+            
+            # SL ต้องมีค่า > 0
+            has_sl = current_sl > 0
+            
+            # Logic: ถ้าไม่มี SL เลย -> ต้องใส่
+            if not has_sl:
+                logger.warning("postfill_missing_sl", extra={
+                    "ticket": ticket,
+                    "symbol": position['symbol'],
+                    "attempt": attempt
+                })
+                
+                # พยายาม Modified
+                # modify_position expects values, returns bool (if client.py fixed)
+                # MT5Client.modify_sl returns bool.
+                res = self.mt5.modify_sl(ticket, new_sl=expected_sl, new_tp=expected_tp if expected_tp > 0 else current_tp)
+                if res: 
+                    logger.info("postfill_fixed_sl", extra={"ticket": ticket, "sl": expected_sl})
+                    return # Fixed
+                else:
+                    logger.error("postfill_modify_failed", extra={"ticket": ticket})
+            else:
+                # มี SL แล้ว -> ปลอดภัย
+                logger.debug("postfill_sl_ok", extra={"ticket": ticket, "sl": current_sl})
+                return
+
+            await asyncio.sleep(self.retry_delay)
+
+        # ถ้า loop จบแล้วยังไม่มี SL -> อันตรายมาก -> Emergency Close
+        logger.critical("postfill_emergency_close", extra={"ticket": ticket, "reason": "FAILED_TO_ATTACH_SL"})
+        self.mt5.close_position(ticket)
+
+    async def verify_all_active(self):
+        """ตรวจสอบทุก position ที่เปิดอยู่ (เรียกโดย Cron/Loop)."""
         positions = self.mt5.get_positions()
+        if not positions:
+            return
 
         for pos in positions:
-            ticket = pos["ticket"]
-            sl = pos.get("sl", 0.0)
-            symbol = pos["symbol"]
+            # Skip Manual Trades (Magic = 0) to avoid conflict with ManualTradeProtector
+            if pos.get('magic', -1) == 0:
+                continue
 
-            if sl <= 0:
-                # ❌ ไม่มี SL — ต้องแก้ไขหรือปิด
-                logger.critical("position_no_sl", extra={
-                    "ticket": ticket,
-                    "symbol": symbol,
-                    "stage": "postfill",
-                    "result": "error",
-                })
-
-                # พยายาม modify ใส่ SL (ใช้ ATR-based estimate)
-                # คำนวณ emergency SL = 2% จาก entry price
-                entry = pos["price_open"]
-                pos_type = pos["type"]
-                emergency_sl_dist = entry * 0.02  # 2% emergency SL
-
-                if pos_type == "BUY":
-                    emergency_sl = round(entry - emergency_sl_dist, 2)
-                else:
-                    emergency_sl = round(entry + emergency_sl_dist, 2)
-
-                success = self.mt5.modify_sl(ticket, emergency_sl)
-
-                if success:
-                    results.append({
-                        "ticket": ticket,
-                        "status": "fixed",
-                        "action_taken": f"Emergency SL set: {emergency_sl}",
-                    })
-                    logger.warning("emergency_sl_set", extra={
-                        "ticket": ticket,
-                        "symbol": symbol,
-                        "sl": emergency_sl,
-                        "stage": "postfill",
-                        "result": "ok",
-                    })
-                else:
-                    # ปิดทันที — emergency close
-                    closed = self.mt5.close_position(ticket, "NO_SL_EMERGENCY")
-                    results.append({
-                        "ticket": ticket,
-                        "status": "emergency_closed" if closed else "CRITICAL_FAILED",
-                        "action_taken": "Emergency close — no SL and modify failed",
-                    })
-                    logger.critical("emergency_close_no_sl", extra={
-                        "ticket": ticket,
-                        "symbol": symbol,
-                        "closed": closed,
-                        "stage": "postfill",
-                        "result": "error",
-                    })
-            else:
-                results.append({
-                    "ticket": ticket,
-                    "status": "ok",
-                    "action_taken": None,
-                })
-
-        logger.info("postfill_verify_complete", extra={
-            "checked": len(results),
-            "issues": sum(1 for r in results if r["status"] != "ok"),
-        })
-        return results
-
-    async def verify_single(self, ticket: int, expected_sl: float) -> bool:
-        """
-        ตรวจ SL ของออเดอร์เดียว (หลัง fill).
-
-        Args:
-            ticket: หมายเลข position
-            expected_sl: SL ที่ควรจะเป็น
-
-        Returns:
-            True = SL ถูกต้อง
-            False = SL หายหรือผิด (ได้ดำเนินการแก้ไขแล้ว)
-        """
-        if not self.mt5:
-            return True
-
-        # ดึง position info
-        positions = self.mt5.get_positions()
-        pos = None
-        for p in positions:
-            if p["ticket"] == ticket:
-                pos = p
-                break
-
-        if pos is None:
-            logger.warning("postfill_position_not_found", extra={
-                "ticket": ticket,
-                "stage": "postfill",
-            })
-            return False
-
-        sl = pos.get("sl", 0.0)
-
-        if sl <= 0:
-            # SL หาย → พยายาม modify
-            success = self.mt5.modify_sl(ticket, expected_sl)
-            if not success:
-                # Emergency close
-                self.mt5.close_position(ticket, "POSTFILL_NO_SL")
-                logger.critical("postfill_emergency_close", extra={
-                    "ticket": ticket,
-                    "expected_sl": expected_sl,
-                    "stage": "postfill",
-                    "result": "error",
-                })
-                return False
-
-            logger.info("postfill_sl_fixed", extra={
-                "ticket": ticket,
-                "sl": expected_sl,
-                "stage": "postfill",
-                "result": "ok",
-            })
-
-        return True
+            # pos is Dict
+            if pos['sl'] <= 0:
+                # เจอ position ไร้ SL!
+                logger.warning("postfill_scan_found_naked_pos", extra={"ticket": pos['ticket'], "symbol": pos['symbol']})
+                
+                # Action: Close it. Naked position is forbidden.
+                self.mt5.close_position(pos['ticket']) 
+                logger.critical("postfill_scan_closed_naked", extra={"ticket": pos['ticket']})

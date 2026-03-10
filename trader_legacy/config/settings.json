@@ -1,0 +1,42 @@
+{
+    "risk_limits": {
+        "max_risk_per_trade_percent": 2.0,
+        "max_daily_loss_percent": 6.0,
+        "max_consecutive_losses": 3,
+        "daily_target_currency": 500.0,
+        "max_spread_points": {
+            "XAUUSD": 300,
+            "XAGUSD": 400,
+            "BTCUSD": 5000
+        }
+    },
+    "regime": {
+        "atr_lookback": 14,
+        "trend_threshold": 0.45,
+        "volatility_expansion_threshold": 1.5,
+        "volatility_compression_threshold": 0.5
+    },
+    "liquidity": {
+        "eqh_eql_threshold_points": 50,
+        "sweep_lookback_bars": 80,
+        "displacement_atr_multiplier": 2.0,
+        "reacceptance_bars": 3
+    },
+    "session_hours_utc": {
+        "asia_start": "00:00",
+        "asia_end": "08:00",
+        "london_start": "08:00",
+        "london_end": "16:00",
+        "ny_start": "13:00",
+        "ny_end": "21:00"
+    },
+    "symbols": {
+        "XAUUSD": "XAUUSDc",
+        "XAGUSD": "XAGUSDc",
+        "BTCUSD": "BTCUSDc"
+    },
+    "strategy": {
+        "enable_trend_killer": true,
+        "enable_liquidity_hunter": true
+    }
+}

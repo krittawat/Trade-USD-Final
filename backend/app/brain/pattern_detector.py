@@ -1,17 +1,19 @@
 """
 PatternDetector — ตรวจจับ Candlestick + Chart Patterns จาก OHLCV.
 
-รองรับ 3 ระดับ:
+รองรับ 4 ระดับ:
     Level 1: Single-bar candlestick (Hammer, Doji, Pin Bar, Marubozu)
     Level 2: Multi-bar candlestick (Engulfing, Morning/Evening Star, Three Soldiers/Crows)
     Level 3: Structural patterns (Double Top/Bottom, H&S, Breakout, S/R zones)
+    Level 4: SMC/ICT patterns (FVG, Order Block, BOS, CHoCH)
 
-Performance (Optimized v2):
+Performance (Optimized v3):
     - ทำงานบน NumPy arrays (ไม่ใช้ loop-heavy pandas)
     - _find_swings vectorized ด้วย sliding_window_view (ไม่มี Python loop)
     - detect_batch() — scan ทุก bar ในครั้งเดียว (สำหรับ PracticeEngine)
     - Cached swing results ภายใน detect_all เพื่อไม่คำนวณซ้ำ
     - Stateless, reentrant
+    - Multi-TF: PatternSignal carries timeframe tag
 
 Output: list[PatternSignal] — ใช้เป็น feature สำหรับ PracticeEngine
 """
@@ -36,6 +38,9 @@ DOUBLE_PATTERN_TOLERANCE = 0.002  # 0.2% price tolerance for double top/bottom
 SR_CLUSTER_PCT = 0.003          # 0.3% clustering tolerance for S/R
 BREAKOUT_VOL_MULT = 1.5         # volume > 1.5x avg = volume spike
 MIN_BARS_FOR_PATTERNS = 20      # ขั้นต่ำสำหรับ structural patterns
+FVG_MIN_ATR_MULT = 0.3          # FVG gap must be >= 0.3 ATR
+OB_DISPLACEMENT_ATR = 1.5       # Order Block displacement >= 1.5 ATR
+BOS_LOOKBACK = 20               # BOS/CHoCH lookback for swing detection
 
 
 @dataclass
@@ -45,6 +50,7 @@ class PatternSignal:
     direction: str           # "bullish" | "bearish" | "neutral"
     strength: float          # 0.0-1.0 (ความแรงสัญญาณ)
     bar_index: int = -1      # ตำแหน่ง bar ที่เจอ
+    timeframe: str = "M5"    # timeframe ที่ detect เช่น "M5", "H1", "H4"
     details: dict = field(default_factory=dict)
 
 
@@ -455,6 +461,13 @@ class PatternDetector:
             signals.extend(self._detect_sr_zones(h, l, c, n_eff))
             signals.extend(self._detect_trend_structure(h, l, n_eff, swing_cache))
 
+            # ── Level 4: SMC/ICT Patterns ──
+            atr = self._compute_atr(h, l, c, n_eff)
+            signals.extend(self._detect_fvg(o, h, l, c, n_eff, atr))
+            signals.extend(self._detect_order_block(o, h, l, c, body, candle_range, is_bullish, is_bearish, n_eff, atr))
+            signals.extend(self._detect_bos(h, l, c, n_eff, swing_cache))
+            signals.extend(self._detect_choch(h, l, c, n_eff, swing_cache))
+
         return signals
 
     # ====================================================================
@@ -668,6 +681,266 @@ class PatternDetector:
                     name="lh_ll_downtrend", direction="bearish",
                     strength=0.75, bar_index=n-1,
                 ))
+
+        return signals
+
+    # ====================================================================
+    # Level 4: SMC / ICT Patterns (Smart Money Concepts)
+    # ====================================================================
+
+    @staticmethod
+    def _compute_atr(h, l, c, n, period: int = 14) -> float:
+        """Compute ATR at bar n-1 (fast numpy computation)."""
+        if n < period + 1:
+            return float(np.mean(h[:n] - l[:n])) if n > 0 else 1e-10
+        tr = np.maximum(
+            h[1:n] - l[1:n],
+            np.maximum(
+                np.abs(h[1:n] - c[:n-1]),
+                np.abs(l[1:n] - c[:n-1]),
+            ),
+        )
+        return float(np.mean(tr[-period:]))
+
+    def _detect_fvg(self, o, h, l, c, n, atr: float) -> list[PatternSignal]:
+        """
+        Fair Value Gap (FVG) — 3-candle imbalance zone.
+
+        Bullish FVG: candle[i-2].high < candle[i].low  (gap up)
+        Bearish FVG: candle[i-2].low  > candle[i].high (gap down)
+
+        Only valid if gap size >= FVG_MIN_ATR_MULT × ATR.
+        """
+        signals = []
+        if n < 3 or atr <= 0:
+            return signals
+
+        i = n - 1
+        min_gap = atr * FVG_MIN_ATR_MULT
+
+        # Bullish FVG: gap between bar[i-2] high and bar[i] low
+        bull_gap = l[i] - h[i-2]
+        if bull_gap >= min_gap:
+            # Price is near or inside the FVG zone (potential entry)
+            fvg_mid = (h[i-2] + l[i]) / 2
+            # Extra strength if middle candle (i-1) is a strong displacement
+            mid_body = abs(c[i-1] - o[i-1])
+            displacement = mid_body / atr if atr > 0 else 0
+            strength = min(0.85, 0.60 + displacement * 0.08)
+            signals.append(PatternSignal(
+                name="bullish_fvg", direction="bullish",
+                strength=round(strength, 2), bar_index=i,
+                details={
+                    "fvg_top": round(float(l[i]), 5),
+                    "fvg_bottom": round(float(h[i-2]), 5),
+                    "fvg_mid": round(float(fvg_mid), 5),
+                    "gap_atr": round(bull_gap / atr, 2),
+                },
+            ))
+
+        # Bearish FVG: gap between bar[i] high and bar[i-2] low
+        bear_gap = l[i-2] - h[i]
+        if bear_gap >= min_gap:
+            fvg_mid = (l[i-2] + h[i]) / 2
+            mid_body = abs(c[i-1] - o[i-1])
+            displacement = mid_body / atr if atr > 0 else 0
+            strength = min(0.85, 0.60 + displacement * 0.08)
+            signals.append(PatternSignal(
+                name="bearish_fvg", direction="bearish",
+                strength=round(strength, 2), bar_index=i,
+                details={
+                    "fvg_top": round(float(l[i-2]), 5),
+                    "fvg_bottom": round(float(h[i]), 5),
+                    "fvg_mid": round(float(fvg_mid), 5),
+                    "gap_atr": round(bear_gap / atr, 2),
+                },
+            ))
+
+        return signals
+
+    def _detect_order_block(self, o, h, l, c, body, candle_range,
+                            is_bullish, is_bearish, n, atr: float) -> list[PatternSignal]:
+        """
+        Order Block — last opposite candle before a strong displacement move.
+
+        Bullish OB: last bearish candle before a bullish displacement (body > 1.5 ATR).
+        Bearish OB: last bullish candle before a bearish displacement.
+
+        The current price returning to OB zone = high-probability entry.
+        """
+        signals = []
+        if n < 5 or atr <= 0:
+            return signals
+
+        i = n - 1
+        disp_threshold = atr * OB_DISPLACEMENT_ATR
+
+        # Check if current bar is a strong displacement (momentum candle)
+        curr_body = abs(c[i] - o[i])
+
+        if curr_body >= disp_threshold:
+            # Bullish displacement → look back for last bearish candle = Bullish OB
+            if c[i] > o[i]:  # bullish candle
+                for j in range(i-1, max(i-6, 0), -1):
+                    if is_bearish[j]:
+                        # Found the order block
+                        ob_high = float(h[j])
+                        ob_low = float(l[j])
+                        # Strength increases with displacement size
+                        disp_ratio = curr_body / atr
+                        strength = min(0.90, 0.65 + disp_ratio * 0.05)
+                        signals.append(PatternSignal(
+                            name="bullish_order_block", direction="bullish",
+                            strength=round(strength, 2), bar_index=i,
+                            details={
+                                "ob_high": round(ob_high, 5),
+                                "ob_low": round(ob_low, 5),
+                                "ob_bar": j,
+                                "displacement_atr": round(disp_ratio, 2),
+                            },
+                        ))
+                        break
+
+            # Bearish displacement → look back for last bullish candle = Bearish OB
+            elif c[i] < o[i]:  # bearish candle
+                for j in range(i-1, max(i-6, 0), -1):
+                    if is_bullish[j]:
+                        ob_high = float(h[j])
+                        ob_low = float(l[j])
+                        disp_ratio = curr_body / atr
+                        strength = min(0.90, 0.65 + disp_ratio * 0.05)
+                        signals.append(PatternSignal(
+                            name="bearish_order_block", direction="bearish",
+                            strength=round(strength, 2), bar_index=i,
+                            details={
+                                "ob_high": round(ob_high, 5),
+                                "ob_low": round(ob_low, 5),
+                                "ob_bar": j,
+                                "displacement_atr": round(disp_ratio, 2),
+                            },
+                        ))
+                        break
+
+        return signals
+
+    def _detect_bos(self, h, l, c, n,
+                    swing_cache: dict | None = None) -> list[PatternSignal]:
+        """
+        Break of Structure (BOS) — price breaks recent swing high/low,
+        confirming trend continuation.
+
+        Bullish BOS: close > most recent swing high
+        Bearish BOS: close < most recent swing low
+        """
+        signals = []
+        if n < BOS_LOOKBACK:
+            return signals
+
+        if swing_cache:
+            swing_highs = [(v, idx) for v, idx in swing_cache.get("swing_h_5", []) if idx < n - 1]
+            swing_lows = [(v, idx) for v, idx in swing_cache.get("swing_l_5", []) if idx < n - 1]
+        else:
+            swing_highs = self._find_swings(h[:n], mode="high", lookback=5)
+            swing_lows = self._find_swings(l[:n], mode="low", lookback=5)
+
+        i = n - 1
+
+        # Bullish BOS: current close breaks above recent swing high
+        if swing_highs:
+            last_sh = swing_highs[-1]
+            # Must be a genuine break (close above, not just wick)
+            if c[i] > last_sh[0] and c[i-1] <= last_sh[0]:
+                # Confirm with body (not just wick)
+                strength = 0.80
+                # Bonus if strong close (close near high of bar)
+                bar_range = h[i] - l[i]
+                if bar_range > 0 and (c[i] - l[i]) / bar_range > 0.7:
+                    strength = 0.85
+                signals.append(PatternSignal(
+                    name="bullish_bos", direction="bullish",
+                    strength=strength, bar_index=i,
+                    details={
+                        "broken_level": round(float(last_sh[0]), 5),
+                        "swing_bar": last_sh[1],
+                    },
+                ))
+
+        # Bearish BOS: current close breaks below recent swing low
+        if swing_lows:
+            last_sl = swing_lows[-1]
+            if c[i] < last_sl[0] and c[i-1] >= last_sl[0]:
+                strength = 0.80
+                bar_range = h[i] - l[i]
+                if bar_range > 0 and (h[i] - c[i]) / bar_range > 0.7:
+                    strength = 0.85
+                signals.append(PatternSignal(
+                    name="bearish_bos", direction="bearish",
+                    strength=strength, bar_index=i,
+                    details={
+                        "broken_level": round(float(last_sl[0]), 5),
+                        "swing_bar": last_sl[1],
+                    },
+                ))
+
+        return signals
+
+    def _detect_choch(self, h, l, c, n,
+                      swing_cache: dict | None = None) -> list[PatternSignal]:
+        """
+        Change of Character (CHoCH) — first break against the prevailing trend.
+
+        In an uptrend (HH+HL): first close below a swing low = bearish CHoCH.
+        In a downtrend (LH+LL): first close above a swing high = bullish CHoCH.
+
+        Higher confidence than BOS because it signals potential reversal.
+        """
+        signals = []
+        if n < BOS_LOOKBACK:
+            return signals
+
+        if swing_cache:
+            swing_highs = [(v, idx) for v, idx in swing_cache.get("swing_h_5", []) if idx < n - 1]
+            swing_lows = [(v, idx) for v, idx in swing_cache.get("swing_l_5", []) if idx < n - 1]
+        else:
+            swing_highs = self._find_swings(h[:n], mode="high", lookback=5)
+            swing_lows = self._find_swings(l[:n], mode="low", lookback=5)
+
+        i = n - 1
+
+        if len(swing_highs) >= 3 and len(swing_lows) >= 3:
+            last3_h = [v for v, _ in swing_highs[-3:]]
+            last3_l = [v for v, _ in swing_lows[-3:]]
+
+            # Uptrend detected (HH+HL) → check for bearish CHoCH
+            is_uptrend = (last3_h[2] > last3_h[1] > last3_h[0] and
+                          last3_l[2] > last3_l[1] > last3_l[0])
+            if is_uptrend:
+                # CHoCH = close breaks below last swing low
+                last_sl_val = swing_lows[-1][0]
+                if c[i] < last_sl_val and c[i-1] >= last_sl_val:
+                    signals.append(PatternSignal(
+                        name="bearish_choch", direction="bearish",
+                        strength=0.85, bar_index=i,
+                        details={
+                            "broken_level": round(float(last_sl_val), 5),
+                            "prev_trend": "uptrend",
+                        },
+                    ))
+
+            # Downtrend detected (LH+LL) → check for bullish CHoCH
+            is_downtrend = (last3_h[2] < last3_h[1] < last3_h[0] and
+                            last3_l[2] < last3_l[1] < last3_l[0])
+            if is_downtrend:
+                last_sh_val = swing_highs[-1][0]
+                if c[i] > last_sh_val and c[i-1] <= last_sh_val:
+                    signals.append(PatternSignal(
+                        name="bullish_choch", direction="bullish",
+                        strength=0.85, bar_index=i,
+                        details={
+                            "broken_level": round(float(last_sh_val), 5),
+                            "prev_trend": "downtrend",
+                        },
+                    ))
 
         return signals
 

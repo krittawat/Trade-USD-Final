@@ -37,9 +37,8 @@ from app.brain.news_collector import NewsCollector
 logger = get_logger(__name__)
 
 # --- Config ---
-MAX_TRAINING_DURATION = 300  # 5 นาที timeout
 TRAIN_SPLIT = 0.8            # 80% train / 20% validate
-MAX_CANDLES = 2000           # จำนวนแท่งเทียนสูงสุดที่ดึง
+MAX_CANDLES = 4000           # จำนวนแท่งเทียนสูงสุดที่ดึง (14 days at M5)
 TOP_N_STRATEGIES = 5         # จำนวน strategies ที่จะ evolve (top N จาก tournament)
 
 
@@ -149,21 +148,30 @@ class TrainingOrchestrator:
 
             # --- ดึงรายชื่อ symbols ---
             symbols = self._get_symbols()
+            
+            # --- Get configured timeout ---
+            timeout_seconds = 1800.0
+            if self.settings and hasattr(self.settings, 'training_timeout_seconds'):
+                timeout_seconds = self.settings.training_timeout_seconds
 
             for symbol in symbols:
                 # --- Timeout check ---
                 elapsed = time.monotonic() - start_time
-                if elapsed > MAX_TRAINING_DURATION:
+                if elapsed > timeout_seconds:
                     logger.warning("training_timeout", extra={
                         "elapsed": round(elapsed, 1),
                         "symbols_done": len(symbols_trained),
+                        "timeout": timeout_seconds,
                     })
                     break
 
                 try:
+                    # ── ใช้ asyncio.to_thread สำหรับการดึงข้อมูลที่ใช้เวลานาน (blocking) ──
                     result = await self._train_symbol(
                         symbol=symbol,
                         session_id=session_id,
+                        start_time=start_time,
+                        timeout_seconds=timeout_seconds,
                     )
                     if result:
                         symbols_trained.append(symbol)
@@ -241,15 +249,17 @@ class TrainingOrchestrator:
     # _train_symbol — ฝึกซ้อม 1 symbol
     # ────────────────────────────────────────────────────────────────
 
-    async def _train_symbol(self, symbol: str, session_id: str = "") -> dict | None:
+    async def _train_symbol(
+        self, symbol: str, session_id: str = "", start_time: float = 0.0, timeout_seconds: float = 1800.0
+    ) -> dict | None:
         """
         ฝึกซ้อม 1 symbol:
             1. ดึง candles
             2. แบ่ง train / validate
             3. Tournament → Evolve → Validate
         """
-        # --- ดึง candles ---
-        candles = self._fetch_historical_candles(symbol)
+        # --- ดึง candles (Async-safe via to_thread) ---
+        candles = await asyncio.to_thread(self._fetch_historical_candles, symbol)
         if candles is None or len(candles) < 100:
             logger.debug("training_skip_insufficient_data", extra={
                 "symbol": symbol,
@@ -262,7 +272,7 @@ class TrainingOrchestrator:
         train_candles = candles.iloc[:split_idx].copy()
         validate_candles = candles.iloc[split_idx:].copy()
 
-        profile = self._get_profile(symbol)
+        profile = await asyncio.to_thread(self._get_profile, symbol)
 
         # --- 1. Tournament: ทุก strategy แข่งกันบน train data ---
         tournament_results = await self.practice_engine.run_tournament(
@@ -285,10 +295,22 @@ class TrainingOrchestrator:
         best_improvement = 0.0
 
         for result in top_strategies:
-            if result.total_trades < 3:
-                continue  # ข้าม strategy ที่ trades น้อยเกินไป
+            # --- Internal timeout check ---
+            if start_time > 0 and (time.monotonic() - start_time) > timeout_seconds:
+                logger.warning("training_timeout_internal", extra={
+                    "symbol": symbol,
+                    "strategy": result.strategy_name,
+                    "elapsed": round(time.monotonic() - start_time, 1),
+                })
+                break
+                
+            if result.total_trades < 2:
+                continue  # ข้าม strategy ที่ trades น้อยเกินไป (ผ่อนปรนเพื่อ 100-day discovery)
 
             try:
+                gens, pop = self._get_training_depth(
+                    result.strategy_name, symbol,
+                )
                 evolve_result = await self.evolver.evolve(
                     practice_engine=self.practice_engine,
                     symbol=symbol,
@@ -296,8 +318,9 @@ class TrainingOrchestrator:
                     profile=profile,
                     strategy_name=result.strategy_name,
                     baseline_params=result.params,
-                    generations=self._get_setting("evolution_generations", 5),
-                    population_size=self._get_setting("evolution_population", 10),
+                    generations=gens,
+                    population_size=pop,
+                    deadline=start_time + timeout_seconds if start_time > 0 else 0.0,
                 )
 
                 # --- 3. Validate บน hold-out data ---
@@ -378,7 +401,7 @@ class TrainingOrchestrator:
 
             is_better = (
                 evolved_result.score >= base_result.score
-                and evolved_result.total_trades >= 3
+                and evolved_result.total_trades >= 2
             )
 
             logger.info("validation_result", extra={
@@ -407,7 +430,7 @@ class TrainingOrchestrator:
                 for s in self.settings.trading_symbols.split(",")
                 if s.strip()
             ]
-        return ["XAUUSDm"]
+        return ["XAUUSDc"]
 
     def _fetch_historical_candles(self, symbol: str) -> pd.DataFrame | None:
         """ดึง historical candles จาก MT5."""
@@ -416,7 +439,12 @@ class TrainingOrchestrator:
 
         try:
             from app.mt5.market_data import fetch_candles
-            return fetch_candles(symbol, timeframe="M5", count=MAX_CANDLES)
+            
+            broker_symbol = symbol
+            if self.mt5 and hasattr(self.mt5, 'adapter'):
+                broker_symbol = self.mt5.adapter.map_symbol(symbol)
+                
+            return fetch_candles(broker_symbol, timeframe="M5", count=MAX_CANDLES)
         except Exception as e:
             logger.error("fetch_candles_error", extra={
                 "symbol": symbol, "error": str(e),
@@ -436,6 +464,59 @@ class TrainingOrchestrator:
         if self.settings:
             return getattr(self.settings, key, default)
         return default
+
+    def _get_training_depth(
+        self, strategy_name: str, symbol: str,
+    ) -> tuple[int, int]:
+        """
+        Adaptive training depth per strategy performance.
+
+        Returns:
+            (generations, population_size)
+
+        Rules:
+            - New strategy (< 30 trades) → 10 gen × 15 pop (explore)
+            - Passing criteria (WR≥50, PF≥1.3) → 3 gen × 8 pop (fine-tune)
+            - Failing criteria → 8 gen × 20 pop (intensive fix)
+        """
+        default_gens = self._get_setting("evolution_generations", 5)
+        default_pop = self._get_setting("evolution_population", 10)
+
+        if not self.memory:
+            return default_gens, default_pop
+
+        try:
+            perf = self.memory.get_strategy_performance(
+                strategy_name=strategy_name, symbol=symbol, regime="ALL",
+            )
+            
+            # --- Identify Gold / Silver focus ---
+            is_precious_metal = bool("XAU" in symbol.upper() or "XAG" in symbol.upper() or "GOLD" in symbol.upper() or "SILVER" in symbol.upper())
+            
+            if not perf or perf.get("total_trades", 0) < 30:
+                # New strategy → explore more
+                gens, pop = (15, 20) if is_precious_metal else (10, 15)
+                depth = "explore_boosted" if is_precious_metal else "explore"
+            elif perf.get("win_rate", 0) >= 50 and perf.get("profit_factor", 0) >= 1.3:
+                # Already passing → fine-tune only
+                gens, pop = (5, 12) if is_precious_metal else (3, 8)
+                depth = "fine_tune_boosted" if is_precious_metal else "fine_tune"
+            else:
+                # Failing → intensive search
+                gens, pop = (12, 25) if is_precious_metal else (8, 20)
+                depth = "intensive_boosted" if is_precious_metal else "intensive"
+
+            logger.info("adaptive_training_depth", extra={
+                "strategy": strategy_name, "symbol": symbol,
+                "depth": depth, "gens": gens, "pop": pop,
+                "wr": perf.get("win_rate", 0) if perf else 0,
+                "pf": perf.get("profit_factor", 0) if perf else 0,
+                "trades": perf.get("total_trades", 0) if perf else 0,
+            })
+            return gens, pop
+
+        except Exception:
+            return default_gens, default_pop
 
     def _save_report(self, report: TrainingReport) -> None:
         """บันทึก training report ลง MemoryStore."""

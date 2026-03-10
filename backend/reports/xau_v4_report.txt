@@ -1,0 +1,67 @@
+19:04:48 > mt5_connect_attempt  server=Exness-MT5Real  login=None
+19:04:48 > mode_resolved  config_currency=USD  mt5_currency=USD
+19:04:48 > mt5_mode_detected  mode={'account_currency': 'USD', 'lot_mode': 'STANDARD', 'symbol_suffix': 'm', 'cent_multiplier': 1.0}  account_currency=USD
+19:04:48 > mt5_connected  mode=USD  login=146336579  server=Exness-MT5Real17  balance=130.94  equity=100.34
+Fetching candles for XAUUSDm (M5)...
+Fetching H1 candles for XAUUSDm...
+19:04:48 > strategy_registered  strategy_name=aether_flow
+19:04:49 > strategy_registered  strategy_name=ai_deep_v4
+19:04:49 > strategy_registered  strategy_name=ai_mtf_v3
+19:04:49 > strategy_registered  strategy_name=alpha_v6
+19:04:49 > strategy_registered  strategy_name=alpha_v6_smc
+19:04:49 > strategy_registered  strategy_name=ALPHA_V6_INSTITUTIONAL
+19:04:49 > strategy_registered  strategy_name=btc_elite
+19:04:49 > strategy_registered  strategy_name=btc_mean_reversion
+19:04:49 > strategy_registered  strategy_name=btc_momentum
+19:04:49 > strategy_registered  strategy_name=btc_stop_hunt
+19:04:49 > strategy_registered  strategy_name=candlestick_structure
+19:04:49 > strategy_registered  strategy_name=ema180_mtf_fvg
+19:04:49 > strategy_registered  strategy_name=forex_precision
+19:04:49 > smart_strategy_audit_loaded  path=d:\VibeCode\Trade\backend\reports\forensics\audit_data.json
+19:04:49 > strategy_registered  strategy_name=fx_sniper
+19:04:49 > strategy_registered  strategy_name=gg_adaptive_weaponry
+19:04:49 > strategy_registered  strategy_name=gold_ai_dragon
+19:04:49 > strategy_registered  strategy_name=gold_break_checklist
+19:04:49 > strategy_registered  strategy_name=gold_elite
+19:04:49 > strategy_registered  strategy_name=gold_evolution
+19:04:49 > strategy_registered  strategy_name=gold_precision
+19:04:49 > strategy_registered  strategy_name=gold_session_breakout
+19:04:49 > strategy_registered  strategy_name=gold_silver_wr60
+19:04:49 > strategy_registered  strategy_name=gold_smart_money
+19:04:49 > strategy_registered  strategy_name=jtg_zone_fvg
+19:04:49 > strategy_registered  strategy_name=opus_liquidity_hunter
+19:04:49 > strategy_registered  strategy_name=opus_oil_momen
+19:04:49 > strategy_registered  strategy_name=opus_trend_killer
+19:04:49 > strategy_registered  strategy_name=pullback_v2
+19:04:49 > strategy_registered  strategy_name=ranging_sniper
+19:04:49 > strategy_registered  strategy_name=scalping
+19:04:49 > strategy_registered  strategy_name=silver_elite
+19:04:49 > strategy_registered  strategy_name=silver_evolution
+19:04:49 > strategy_registered  strategy_name=sniper
+19:04:49 > strategy_registered  strategy_name=trend_rider
+19:04:49 > strategy_registered  strategy_name=usdjpy_elite
+19:04:49 > strategy_registered  strategy_name=usoil_elite
+19:04:49 > smart_strategy_audit_loaded  path=d:\VibeCode\Trade\backend\reports\forensics\audit_data.json
+19:04:49 > strategy_registered  strategy_name=audusd_trend
+19:04:49 > strategy_registered  strategy_name=eurusd_precision
+19:04:49 > strategy_registered  strategy_name=gbpusd_trend
+19:04:49 > strategy_registered  strategy_name=nzdusd_trend
+19:04:49 > strategy_registered  strategy_name=forex_precision
+19:04:49 > strategy_registered  strategy_name=usdjpy_pair
+19:04:49 > strategy_registered  strategy_name=xauusd_pro
+19:04:49 > auto_register_complete  total_registered=43  routing_entries=0
+
+--- Running Backtest for Omni-Directional Smart Trading (XAUUSDm) ---
+
+--- Backtest Results ---
+Total Trades: 7
+Wins: 2, Losses: 5
+Win Rate: 28.57%
+Est. Profit (Raw Pips/Pts): -27.31
+
+--- Sample Continuation Trades ---
+[2026-02-23 00:25:00+00:00] BUY -> LOSS | Reason: VMC Diamond
+[2026-02-23 00:55:00+00:00] BUY -> WIN | Reason: VMC Diamond
+[2026-02-23 02:00:00+00:00] BUY -> LOSS | Reason: VMC Diamond
+[2026-02-23 02:30:00+00:00] BUY -> LOSS | Reason: VMC Diamond
+[2026-02-23 03:30:00+00:00] BUY -> LOSS | Reason: VMC Diamond

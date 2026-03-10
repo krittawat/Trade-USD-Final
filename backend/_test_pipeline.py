@@ -88,7 +88,7 @@ print("[OK] SQLite connected")
 
 # Save decision trace
 store.save_decision_trace(
-    symbol="XAUUSDm",
+    symbol="XAUUSDc",
     stage="signal",
     result="ok",
     action="BUY",
@@ -100,14 +100,14 @@ store.save_decision_trace(
 )
 
 # Query it back
-decisions = store.get_decisions(symbol="XAUUSDm", limit=1)
+decisions = store.get_decisions(symbol="XAUUSDc", limit=1)
 assert len(decisions) == 1, f"Expected 1 decision, got {len(decisions)}"
 assert decisions[0]["strategy_name"] == "scalping"
 print("[OK] Decision trace saved + queried")
 
 # Save trade
 trade_id = store.save_trade(
-    symbol="XAUUSDm",
+    symbol="XAUUSDc",
     action="BUY",
     lot_size=0.01,
     entry_price=2850.5,
@@ -137,14 +137,14 @@ print("[OK] SQLite cleanup done")
 
 # 14. News filter
 nf = NewsFilter(30)
-assert nf.is_safe("XAUUSDm") == True  # no events cached = safe
+assert nf.is_safe("XAUUSDc") == True  # no events cached = safe
 print("[OK] News filter (default safe)")
 
 # 15. MT5 live test
 import MetaTrader5 as mt5
 import pandas as pd
 mt5.initialize()
-rates = mt5.copy_rates_from_pos("XAUUSDm", mt5.TIMEFRAME_M5, 0, 250)
+rates = mt5.copy_rates_from_pos("XAUUSDc", mt5.TIMEFRAME_M5, 0, 250)
 if rates is not None:
     df = pd.DataFrame(rates)
     df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
@@ -154,7 +154,7 @@ if rates is not None:
     regime = classify_regime(df)
     print(f"[OK] Regime: {regime.value}")
 
-    profile = SymbolProfile(symbol="XAUUSDm", digits=3, point=0.001, contract_size=100)
+    profile = SymbolProfile(symbol="XAUUSDc", digits=3, point=0.001, contract_size=100)
     decision = factory.get_decision(df, profile, regime)
     print(f"[OK] Decision: {decision.action.value} | conf={decision.confidence} | {decision.strategy_name}")
 

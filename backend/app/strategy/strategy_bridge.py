@@ -78,6 +78,19 @@ def _clamp_confidence(val: float) -> float:
 # TemplateBridge — Adapter สำหรับ template strategies แบบเก่า
 # ====================================================================
 
+def _is_signature_type_error(err: TypeError) -> bool:
+    """Return True when TypeError looks like a callable signature mismatch."""
+    msg = str(err)
+    markers = (
+        "unexpected keyword argument",
+        "required positional argument",
+        "positional argument",
+        "takes ",
+        "got an unexpected",
+    )
+    return any(marker in msg for marker in markers)
+
+
 class TemplateBridge(BaseStrategy):
     """
     Bridge สำหรับ template strategies ที่ใช้ StrategyDecision interface เก่า.
@@ -131,16 +144,28 @@ class TemplateBridge(BaseStrategy):
             # --- เรียก template strategy เดิม ---
             # ลอง signatures หลายแบบ (แต่ละ template อาจรับ args ต่างกัน)
             result = None
-            try:
-                result = self._template.analyze(df=candles, direction="AUTO")
-            except TypeError:
+            attempts = [
+                {"df": candles, "direction": "AUTO", **kwargs},
+                {"df": candles, "direction_mode": "AUTO", **kwargs},
+                {"df": candles, **kwargs},
+                {"candles": candles, **kwargs},
+            ]
+            for call_kwargs in attempts:
                 try:
-                    result = self._template.analyze(df=candles, direction_mode="AUTO")
-                except TypeError:
-                    try:
-                        result = self._template.analyze(df=candles)
-                    except TypeError:
-                        result = self._template.analyze(candles)
+                    result = self._template.analyze(**call_kwargs)
+                    break
+                except TypeError as e:
+                    if not _is_signature_type_error(e):
+                        raise
+                    continue
+
+            if result is None:
+                try:
+                    result = self._template.analyze(candles, **kwargs)
+                except TypeError as e:
+                    if not _is_signature_type_error(e):
+                        raise
+                    result = self._template.analyze(candles)
 
             # ถ้า template return None → ไม่มีสัญญาณ
             if result is None:
@@ -253,13 +278,27 @@ class StandaloneBridge(TemplateBridge):
             # --- ลองเรียก analyze() ด้วย signatures ที่ต่างกัน ---
             # แต่ละ standalone strategy อาจรับ arguments ไม่เหมือนกัน
             result = None
-            try:
-                result = self._template.analyze(df=candles, symbol=profile.symbol)
-            except TypeError:
+            attempts = [
+                {"df": candles, "symbol": profile.symbol, **kwargs},
+                {"df": candles, **kwargs},
+                {"candles": candles, "symbol": profile.symbol, **kwargs},
+            ]
+            for call_kwargs in attempts:
                 try:
-                    result = self._template.analyze(candles)  # positional arg
-                except TypeError:
-                    result = self._template.analyze(df=candles)  # keyword only
+                    result = self._template.analyze(**call_kwargs)
+                    break
+                except TypeError as e:
+                    if not _is_signature_type_error(e):
+                        raise
+                    continue
+
+            if result is None:
+                try:
+                    result = self._template.analyze(candles, **kwargs)  # positional arg
+                except TypeError as e:
+                    if not _is_signature_type_error(e):
+                        raise
+                    result = self._template.analyze(candles)
 
             # ถ้า return None → ไม่มีสัญญาณ
             if result is None:

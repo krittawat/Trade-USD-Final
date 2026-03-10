@@ -1,0 +1,163 @@
+{
+  "symbol": "XAUUSDc",
+  "days": 60,
+  "generations": 5,
+  "population": 10,
+  "elapsed_s": 991.5,
+  "baseline": {
+    "score": 0.7684,
+    "trades": 88,
+    "wr": 38.6,
+    "pf": 1.22,
+    "dd": 9.5,
+    "pnl": 12.07,
+    "avg_rr": 0.14
+  },
+  "evolved_train": {
+    "score": 0.8476,
+    "trades": 84,
+    "wr": 47.6,
+    "pf": 1.36,
+    "dd": 5.4,
+    "pnl": 16.0,
+    "avg_rr": 0.19
+  },
+  "evolved_validate": {
+    "score": 0.7756,
+    "trades": 27,
+    "wr": 44.4,
+    "pf": 1.2,
+    "dd": 5.7,
+    "pnl": 3.0,
+    "avg_rr": 0.11
+  },
+  "best_params": {
+    "sr_lookback": 30.0,
+    "vol_spike_ratio": 1.5,
+    "rr_target": 1.5,
+    "sl_atr_mult": 0.5,
+    "rsi_sell_min": 40.0,
+    "fvg_min_gap_atr": 0.5,
+    "rsi_buy_min": 30.0,
+    "require_pattern": 1.0,
+    "ema_fast": 90.0,
+    "require_structure": 1.0,
+    "sr_zone_atr_mult": 0.8,
+    "rsi_sell_max": 65.0,
+    "rsi_buy_max": 60.0,
+    "min_confluence": 3.0,
+    "sl_max_atr": 1.5,
+    "ema_slow": 220.0
+  },
+  "param_changes": {
+    "sl_atr_mult": {
+      "old": 1.0,
+      "new": 0.5,
+      "change_pct": -50.0,
+      "direction": "\u2193"
+    },
+    "rr_target": {
+      "old": 2.0,
+      "new": 1.5,
+      "change_pct": -25.0,
+      "direction": "\u2193"
+    },
+    "min_confluence": {
+      "old": 5.0,
+      "new": 3.0,
+      "change_pct": -40.0,
+      "direction": "\u2193"
+    },
+    "sr_zone_atr_mult": {
+      "old": 0.3,
+      "new": 0.8,
+      "change_pct": 166.7,
+      "direction": "\u2191"
+    },
+    "rsi_sell_max": {
+      "old": 70.0,
+      "new": 65.0,
+      "change_pct": -7.1,
+      "direction": "\u2193"
+    },
+    "ema_fast": {
+      "old": 50.0,
+      "new": 90.0,
+      "change_pct": 80.0,
+      "direction": "\u2191"
+    },
+    "ema_slow": {
+      "old": 200.0,
+      "new": 220.0,
+      "change_pct": 10.0,
+      "direction": "\u2191"
+    },
+    "require_pattern": {
+      "old": 0.0,
+      "new": 1.0,
+      "change_pct": 0,
+      "direction": "\u2191"
+    }
+  },
+  "insights": [
+    "\u26a0\ufe0f  WR = 47.6% \u2014 still below 50%, consider tighter entry filters",
+    "\u2705 PF \u2265 1.3 \u2014 risk/reward profile is profitable",
+    "\u2705 DD \u2264 6% \u2014 drawdown is acceptable",
+    "\ud83d\udcc8 Score improved by 0.0792 (10.3%)",
+    "\ud83d\udd50 Best hour: 12:00 UTC (WR=88%, 8 trades)",
+    "\ud83d\udeab Worst hours (0% WR): 21:00"
+  ],
+  "generation_log": [
+    {
+      "gen": 1,
+      "best_score": 0.8096,
+      "best_wr": 45.7,
+      "best_pf": 1.26,
+      "best_dd": 5.4,
+      "best_trades": 116,
+      "avg_score": 0.7259,
+      "elapsed": 174.2
+    },
+    {
+      "gen": 2,
+      "best_score": 0.8188,
+      "best_wr": 46.3,
+      "best_pf": 1.3,
+      "best_dd": 7.1,
+      "best_trades": 82,
+      "avg_score": 0.7335,
+      "elapsed": 176.3
+    },
+    {
+      "gen": 3,
+      "best_score": 0.8188,
+      "best_wr": 46.3,
+      "best_pf": 1.3,
+      "best_dd": 7.1,
+      "best_trades": 82,
+      "avg_score": 0.7594,
+      "elapsed": 205.9
+    },
+    {
+      "gen": 4,
+      "best_score": 0.8476,
+      "best_wr": 47.6,
+      "best_pf": 1.36,
+      "best_dd": 5.4,
+      "best_trades": 84,
+      "avg_score": 0.7967,
+      "elapsed": 208.1
+    },
+    {
+      "gen": 5,
+      "best_score": 0.8476,
+      "best_wr": 47.6,
+      "best_pf": 1.36,
+      "best_dd": 5.4,
+      "best_trades": 84,
+      "avg_score": 0.8036,
+      "elapsed": 209.2
+    }
+  ],
+  "live_ready": false
+}

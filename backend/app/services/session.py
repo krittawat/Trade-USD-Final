@@ -42,9 +42,14 @@ def get_current_session(now: datetime | None = None) -> MarketSession:
     if now is None:
         now = datetime.now(timezone.utc)
 
+    # 1. เช็ควันหยุด (Saturday=5, Sunday=6)
+    # หมายเหตุ: ตลาดปกติเปิดประมาณ 22:00 UTC วันอาทิตย์
+    weekday = now.weekday()
     hour = now.hour
-    active_sessions = []
+    if weekday == 5 or (weekday == 6 and hour < 22):
+        return MarketSession.WEEKEND
 
+    active_sessions = []
     for session, (start, end) in SESSION_HOURS.items():
         if start <= hour < end:
             active_sessions.append(session)

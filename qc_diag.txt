@@ -1,0 +1,33 @@
+=== STDOUT ===
+============================================================
+  OPUS QC Suite V4 � Production + OPUS Governor
+  2026-03-04 11:03:28
+============================================================
+
+[1/9] Config Validation
+
+=== STDERR ===
+Traceback (most recent call last):
+  File "D:\VibeCode\Trade\backend\trader\scripts\qc_suite.py", line 23, in check
+    print(f"  {status}  {name}: {detail}")
+  File "C:\Users\PCMD\AppData\Local\Programs\Python\Python312\Lib\encodings\cp874.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2705' in position 2: character maps to <undefined>
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "D:\VibeCode\Trade\backend\trader\scripts\qc_suite.py", line 440, in <module>
+    success = main()
+              ^^^^^^
+  File "D:\VibeCode\Trade\backend\trader\scripts\qc_suite.py", line 380, in main
+    check("Config loads correctly", test_config_loads)
+  File "D:\VibeCode\Trade\backend\trader\scripts\qc_suite.py", line 26, in check
+    print(f"  {FAIL}  {name}: {e}")
+  File "C:\Users\PCMD\AppData\Local\Programs\Python\Python312\Lib\encodings\cp874.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u274c' in position 2: character maps to <undefined>

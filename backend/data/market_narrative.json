@@ -1,0 +1,45 @@
+{
+    "updated_at": "2026-03-09T19:51:57.989598",
+    "narrative": {
+        "XAUUSD": {
+            "bias": "BULLISH",
+            "score": 0.8,
+            "reason": "Geopolitical tensions rising in Middle East."
+        },
+        "BTCUSD": {
+            "bias": "BULLISH",
+            "score": 0.6,
+            "reason": "Institutional inflows increasing after ETF approval."
+        },
+        "USOIL": {
+            "bias": "NEUTRAL",
+            "score": 0.0,
+            "reason": "OPEC+ production cuts balanced by US shale growth."
+        },
+        "US30": {
+            "bias": "BEARISH",
+            "score": -0.4,
+            "reason": "High interest rates impacting industrial growth."
+        },
+        "USTEC": {
+            "bias": "NEUTRAL",
+            "score": 0.0,
+            "reason": "No clear narrative."
+        },
+        "EURUSD": {
+            "bias": "NEUTRAL",
+            "score": 0.0,
+            "reason": "No clear narrative."
+        },
+        "GBPUSD": {
+            "bias": "NEUTRAL",
+            "score": 0.0,
+            "reason": "No clear narrative."
+        },
+        "USDJPY": {
+            "bias": "NEUTRAL",
+            "score": 0.0,
+            "reason": "No clear narrative."
+        }
+    }
+}

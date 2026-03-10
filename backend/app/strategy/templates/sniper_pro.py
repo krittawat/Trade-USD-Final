@@ -60,6 +60,8 @@ class SniperProStrategy:
     - Wide SL for volatility, tight management
     """
     
+    name = "sniper_pro"
+    
     # Validated Parameters for "Sniper V2" (High Certainty)
     CONFIGS = {
         "DEFAULT": {
@@ -137,7 +139,7 @@ class SniperProStrategy:
         curr_vol = df['tick_volume'].iloc[-1]
         return curr_vol >= (avg_vol * self.VOL_MULT_THRESHOLD)
 
-    def analyze(self, df: pd.DataFrame, direction: str = "AUTO", htf_trend: Optional[str] = None) -> SniperSignal:
+    def analyze(self, df: pd.DataFrame, direction: str = "AUTO", htf_trend: Optional[str] = None, **kwargs) -> SniperSignal:
         """
         Analyze M15 data with D1 Trend + ADX Power Filter.
         """

@@ -2,7 +2,7 @@
 import sqlite3
 import os
 
-db_path = os.path.join(os.path.dirname(__file__), "backend", "data", "sqlite", "trading.db")
+db_path = os.path.join(os.path.dirname(__file__), "data", "sqlite", "trading.db")
 conn = sqlite3.connect(db_path)
 conn.row_factory = sqlite3.Row
 cursor = conn.cursor()

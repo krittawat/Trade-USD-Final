@@ -34,13 +34,17 @@ REFRESH_INTERVAL_HOURS = 6
 MAX_CACHED_EVENTS = 200
 NEWS_WINDOW_MINUTES = 30  # ±30 นาที = ถือว่า "ใกล้ข่าว"
 
+# Rate-limit backoff config
+BACKOFF_BASE_SECONDS = 900        # 15 min initial cooldown after 429
+BACKOFF_MAX_SECONDS = 6 * 3600    # 6 hours max cooldown
+
 # Currencies affected by each symbol
 SYMBOL_CURRENCIES = {
-    "XAUUSD": ["USD"], "XAUUSDm": ["USD"],
-    "EURUSD": ["EUR", "USD"], "EURUSDm": ["EUR", "USD"],
-    "GBPUSD": ["GBP", "USD"], "GBPUSDm": ["GBP", "USD"],
-    "USDJPY": ["USD", "JPY"], "USDJPYm": ["USD", "JPY"],
-    "BTCUSD": ["USD"], "BTCUSDm": ["USD"],
+    "XAUUSD": ["USD"], "XAUUSDc": ["USD"],
+    "EURUSD": ["EUR", "USD"], "EURUSDc": ["EUR", "USD"],
+    "GBPUSD": ["GBP", "USD"], "GBPUSDc": ["GBP", "USD"],
+    "USDJPY": ["USD", "JPY"], "USDJPYc": ["USD", "JPY"],
+    "BTCUSD": ["USD"], "BTCUSDc": ["USD"],
 }
 
 
@@ -84,7 +88,7 @@ class NewsCollector:
         await collector.refresh()  # ดึงข่าวใหม่
 
         # ใน PracticeEngine:
-        ctx = collector.get_news_context("XAUUSDm", bar_time)
+        ctx = collector.get_news_context("XAUUSDc", bar_time)
         if ctx.near_news:
             tag_trade("near_" + ctx.impact)
     """
@@ -93,6 +97,9 @@ class NewsCollector:
         self._events: list[NewsEvent] = []
         self._last_refresh: Optional[datetime] = None
         self._refresh_lock = False
+        # Rate-limit backoff state
+        self._rate_limit_until: Optional[datetime] = None
+        self._consecutive_429s: int = 0
 
     # ────────────────────────────────────────────────────────────────
     # Refresh — ดึงข่าวใหม่จาก ForexFactory
@@ -108,16 +115,46 @@ class NewsCollector:
         if self._refresh_lock:
             return len(self._events)
 
+        # ── Rate-limit cooldown check ──
+        now_utc = datetime.now(timezone.utc)
+        if self._rate_limit_until and now_utc < self._rate_limit_until:
+            remaining = (self._rate_limit_until - now_utc).total_seconds()
+            logger.debug("news_collector_rate_limited", extra={
+                "retry_after_sec": round(remaining),
+                "cached_events": len(self._events),
+            })
+            return len(self._events)
+
         self._refresh_lock = True
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 r = await client.get(FF_CALENDAR_URL)
+
+            if r.status_code == 429:
+                # Exponential backoff: 15m → 30m → 60m → ... → 6h max
+                self._consecutive_429s += 1
+                backoff = min(
+                    BACKOFF_BASE_SECONDS * (2 ** (self._consecutive_429s - 1)),
+                    BACKOFF_MAX_SECONDS,
+                )
+                self._rate_limit_until = now_utc + timedelta(seconds=backoff)
+                logger.warning("news_collector_rate_limited_429", extra={
+                    "consecutive_429s": self._consecutive_429s,
+                    "backoff_seconds": backoff,
+                    "retry_at": self._rate_limit_until.isoformat(),
+                    "cached_events": len(self._events),
+                })
+                return len(self._events)
 
             if r.status_code != 200:
                 logger.warning("news_collector_fetch_failed", extra={
                     "status": r.status_code,
                 })
                 return len(self._events)
+
+            # ── Success — reset backoff ──
+            self._consecutive_429s = 0
+            self._rate_limit_until = None
 
             raw = r.json()
             parsed: list[NewsEvent] = []
@@ -151,7 +188,7 @@ class NewsCollector:
             # เก็บเฉพาะ MAX_CACHED_EVENTS ล่าสุด (sorted by time)
             parsed.sort(key=lambda e: e.time, reverse=True)
             self._events = parsed[:MAX_CACHED_EVENTS]
-            self._last_refresh = datetime.now(timezone.utc)
+            self._last_refresh = now_utc
 
             logger.info("news_collector_refreshed", extra={
                 "total_events": len(self._events),
@@ -168,6 +205,10 @@ class NewsCollector:
 
     async def ensure_fresh(self) -> None:
         """Auto-refresh ถ้าข้อมูลเก่าเกิน REFRESH_INTERVAL_HOURS."""
+        # Skip if currently rate-limited
+        if self._rate_limit_until and datetime.now(timezone.utc) < self._rate_limit_until:
+            return
+
         if self._last_refresh is None:
             await self.refresh()
             return

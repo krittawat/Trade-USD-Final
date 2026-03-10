@@ -1,0 +1,216 @@
+{
+    "risk_limits": {
+        "max_risk_per_trade_percent": 0.5,
+        "max_daily_loss_percent": 10.0,
+        "max_daily_loss_currency": 12.0,
+        "max_consecutive_losses": 3,
+        "daily_target_currency": 60.0,
+        "vault_target_currency": 18.0,
+        "usd_to_thb_rate": 35.0,
+        "max_spread_points": {
+            "XAUUSD": 1000,
+            "XAGUSD": 1500,
+            "BTCUSD": 5000,
+            "USOIL": 300,
+            "US30": 300,
+            "USTEC": 500
+        },
+
+        "min_volume_ratio": 0.8,
+        "min_volume_ratio_hard": 0.4,
+        "atr_deviation_cooldown_threshold": 2.2,
+        "cooldown_minutes": 15,
+        "min_equity_threshold": 10.0,
+        "max_daily_trades_crypto": 5,
+        "max_positions_per_symbol": {
+            "BTCUSD": 3,
+            "USOIL": 3,
+            "XAUUSD": 3,
+            "XAGUSD": 3,
+            "US30": 3,
+            "USTEC": 3
+        }
+
+    },
+    "hedge_enable": true,
+    "hedge_threshold_dd_pct": 15.0,
+    "hedge_threshold_usd": 0.0,
+    "regime": {
+        "atr_lookback": 14,
+        "trend_threshold": 0.65,
+        "volatility_expansion_threshold": 1.5,
+        "volatility_compression_threshold": 0.5
+    },
+    "liquidity": {
+        "eqh_eql_threshold_points": 50,
+        "sweep_lookback_bars": 80,
+        "displacement_atr_multiplier": 2.0,
+        "reacceptance_bars": 3
+    },
+    "session_hours_utc": {
+        "asia_start": "00:00",
+        "asia_end": "08:00",
+        "london_start": "08:00",
+        "london_end": "16:00",
+        "ny_start": "13:00",
+        "ny_end": "21:00"
+    },
+    "symbols": {
+        "XAUUSD": "XAUUSDm",
+        "XAGUSD": "XAGUSDm",
+        "BTCUSD": "BTCUSDm",
+        "USOIL": "USOILm",
+        "USOILm": "USOILm",
+        "US30": "US30m",
+        "USTEC": "USTECm",
+        "EURUSD": "EURUSDm",
+        "GBPUSD": "GBPUSDm",
+        "USDJPY": "USDJPYm"
+    },
+
+    "strategy": {
+        "enable_trend_killer": false,
+        "enable_liquidity_hunter": true,
+        "enable_sniper_pro": false,
+        "enable_predicta_v4": false,
+        "enable_counter_trend": false,
+        "enable_easy_trend": false,
+        "enable_antichop_filter": true,
+        "enable_momentum_rider": false,
+        "enable_micro_scalper": false,
+        "enable_antigravity_alpha": false,
+        "enable_alpha_v6": true,
+        "enable_gold_elite": true,
+        "enable_usoil_elite": false,
+        "enable_usoil_momentum": false,
+        "enable_smc_metals": true,
+        "enable_ai_brain": true,
+        "enable_momentum_scalper": false,
+        "enable_btc_mean_rev": false,
+        "enable_btc_stop_hunt": false,
+        "enable_btc_elite": false,
+        "enable_btc_whale": false,
+        "enable_btc_oracle": false,
+        "enable_fvg_logic": true,
+        "enable_aether_flow": true,
+        "enable_indices_ultimate": false,
+        "min_confidence_trade": 0.75,
+        "min_liquidity_event_score": 0.80,
+        "trade_cooldown_bars": 6,
+        "sl_atr_multiplier": 1.2,
+        "tp1_risk_multiplier": 1.5,
+        "tp2_risk_multiplier": 2.5,
+        "tp3_risk_multiplier": 2.0,
+        "pyramid": {
+            "enabled": true,
+            "min_confidence": 0.70,
+            "min_r_in_profit": 0.5,
+            "addon_max_risk_r": 0.3,
+            "max_total_risk_pct": 5.0,
+            "max_pyramids_per_pos": 2
+        },
+        "sniper_pro": {
+            "min_confidence": 75
+        },
+        "predicta_v4": {
+            "min_confluence": 4
+        },
+        "counter_trend": {
+            "cooldown_bars": 5
+        },
+        "allow_counter_trend_critical": true
+    },
+    "opus_governor": {
+        "margin_reduce_threshold": 100,
+        "margin_block_threshold": 50,
+        "defensive_dd_threshold": 4.0,
+        "defensive_lot_reduction": 0.5,
+        "risk_per_trade_pct": 0.5,
+        "defensive_risk_pct": 0.25,
+        "daily_loss_limit_pct": 5.0,
+        "rr_minimum": 1.20,
+        "consecutive_loss_cooldown_hours": 2,
+        "atr_block_deviation": 2.5
+    },
+    "tiered_scaling": {
+        "enabled": true,
+        "tiers": [
+            {
+                "min_equity": 0,
+                "max_lot_XAUUSD": 0.01,
+                "max_lot_XAGUSD": 0.01,
+                "max_lot_BTCUSD": 0.01,
+                "max_lot_USOILm": 0.01,
+                "max_lot_US30m": 0.01,
+                "max_lot_USTECm": 0.01
+            },
+            {
+                "min_equity": 10,
+                "max_lot_XAUUSD": 0.01,
+                "max_lot_XAGUSD": 0.01,
+                "max_lot_BTCUSD": 0.01,
+                "max_lot_USOILm": 0.01,
+                "max_lot_US30m": 0.01,
+                "max_lot_USTECm": 0.01
+            },
+            {
+                "min_equity": 25,
+                "max_lot_XAUUSD": 0.01,
+                "max_lot_XAGUSD": 0.01,
+                "max_lot_BTCUSD": 0.01,
+                "max_lot_USOILm": 0.01,
+                "max_lot_US30m": 0.01,
+                "max_lot_USTECm": 0.01
+            },
+            {
+                "min_equity": 50,
+                "max_lot_XAUUSD": 0.01,
+                "max_lot_XAGUSD": 0.01,
+                "max_lot_BTCUSD": 0.01,
+                "max_lot_USOILm": 0.01,
+                "max_lot_US30m": 0.01,
+                "max_lot_USTECm": 0.01
+            },
+            {
+                "min_equity": 100,
+                "max_lot_XAUUSD": 0.01,
+                "max_lot_XAGUSD": 0.01,
+                "max_lot_BTCUSD": 0.02,
+                "max_lot_USOILm": 0.01,
+                "max_lot_US30m": 0.01,
+                "max_lot_USTECm": 0.01
+            },
+            {
+                "min_equity": 500,
+                "max_lot_XAUUSD": 0.04,
+                "max_lot_XAGUSD": 0.04,
+                "max_lot_BTCUSD": 0.10,
+                "max_lot_USOILm": 0.05,
+
+                "max_lot_US30m": 0.02,
+                "max_lot_USTECm": 0.02
+            }
+        ]
+    },
+    "leverage_scaling": {
+        "enabled": true,
+        "tiers": [
+            {
+                "min_equity": 0,
+                "max_effective_leverage": 500
+            },
+            {
+                "min_equity": 100,
+                "max_effective_leverage": 200
+            },
+            {
+                "min_equity": 500,
+                "max_effective_leverage": 100
+            },
+            {
+                "min_equity": 1000,
+                "max_effective_leverage": 50
+            }
+        ]
+    }
+}

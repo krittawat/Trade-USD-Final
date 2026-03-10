@@ -287,3 +287,64 @@ def apply_anti_hunt_sl(
     )
     
     return sl
+
+
+# =============================================
+# Trailing Anti-Hunt — ใช้ตอนย้าย SL (lightweight)
+# =============================================
+
+def apply_anti_hunt_trailing(
+    sl_price: float,
+    direction: str,
+    dodge_distance: float = 1.5,
+    point: float = 0.01,
+    digits: int = 2,
+    enable_round_dodge: bool = True,
+    enable_buffer: bool = True,
+) -> float:
+    """
+    Anti-Hunt สำหรับ Trailing SL — ย้าย SL หลบเลขกลม + buffer.
+
+    ใช้ 2 layers (ไม่ scan swing — เพราะ trailing ย้ายบ่อย ต้องเร็ว):
+      1. Round Number Dodge — หลบ $X0, $X5, $X.00
+      2. Buffer — deterministic micro-shift
+
+    Args:
+        sl_price: SL price ที่คำนวณได้จาก trailing logic
+        direction: "BUY" หรือ "SELL"
+        dodge_distance: ระยะ dodge จากเลขกลม ($)
+        point: minimum price tick (0.01 for Gold, 0.00001 for Forex)
+        digits: decimal places สำหรับ rounding
+        enable_round_dodge: เปิด/ปิด round number dodge
+        enable_buffer: เปิด/ปิด buffer
+
+    Returns:
+        SL price หลัง anti-hunt adjustment
+    """
+    original_sl = sl_price
+
+    # Layer 1: Round Number Dodge
+    if enable_round_dodge:
+        sl_price = dodge_round_numbers(sl_price, direction, dodge_distance)
+
+    # Layer 2: Micro-buffer (deterministic — reproducible ใน backtest)
+    if enable_buffer:
+        # Buffer เล็ก = 3-7 ticks (deterministic จาก price level)
+        frac = abs(sl_price * 100) % 100 / 100  # 0.00 - 0.99
+        buffer_ticks = 3 + frac * 4  # 3-7 ticks
+        buffer = buffer_ticks * point
+
+        if direction == "BUY":
+            sl_price -= buffer  # BUY: SL ต่ำลงอีกนิด (กว้างขึ้น)
+        else:
+            sl_price += buffer  # SELL: SL สูงขึ้นอีกนิด (กว้างขึ้น)
+
+    sl_price = round(sl_price, digits)
+
+    if abs(sl_price - original_sl) > 0.001:
+        logger.debug(
+            f"[AntiHuntTrail] {direction} | before={original_sl:.{digits}f} "
+            f"→ after={sl_price:.{digits}f}"
+        )
+
+    return sl_price

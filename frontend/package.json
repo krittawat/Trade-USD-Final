@@ -1,0 +1,20 @@
+{
+  "name": "antigravity-dashboard",
+  "private": true,
+  "scripts": {
+    "dev": "nuxt dev --port 3000",
+    "build": "nuxt build",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview"
+  },
+  "devDependencies": {
+    "@nuxtjs/tailwindcss": "^6.11.0",
+    "@tailwindcss/typography": "^0.5.19",
+    "nuxt": "^3.10.0"
+  },
+  "dependencies": {
+    "@pinia/nuxt": "^0.5.1",
+    "markdown-it": "^14.1.1",
+    "pinia": "^2.1.7"
+  }
+}

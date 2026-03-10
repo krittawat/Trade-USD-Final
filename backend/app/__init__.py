@@ -5,7 +5,7 @@ This is the root package for all trading system modules.
 Sub-packages:
     core/       — Config, logging, time, errors, mode
     domain/     — Typed models and enums
-    db/         — QuestDB, SQLite, DuckDB wrappers
+    db/         — SQLite, DuckDB wrappers (QuestDB removed)
     mt5/        — MetaTrader 5 client and market data
     risk/       — Pre-trade gate, sizing, guards, postfill, breakeven
     strategy/   — Strategy interface, factory, templates

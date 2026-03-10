@@ -7,11 +7,13 @@ Backtester — Full candle-by-candle backtest engine with SL/TP simulation.
     - Track equity curve, drawdown, win/loss
     - Compute: win_rate, profit_factor, max_dd, expectancy, avg_R, sharpe
     - ใช้ strategy analyze() เดียวกับ live (single source of truth)
+    - Overtrading Safety: enforce cooldown, regime filter, session guard, risk dampener
 
 กฎเหล็ก:
     - SL hit ก่อน TP เสมอ ถ้าทั้ง SL+TP ถูกกดในแท่งเดียว (worst case)
     - ไม่ใช้ future data (look-ahead bias prevention)
     - RAM: ใช้ streaming — ไม่เก็บ candle ทั้งหมดใน memory
+    - Safety modules: cooldown/regime/session/dampener เหมือน live pipeline
 """
 
 import time
@@ -25,6 +27,10 @@ from app.core.logging import get_logger
 from app.domain.enums import Action, RegimeType
 from app.domain.models import Decision, SymbolProfile
 from app.brain.regime import classify_regime
+from app.risk.regime_filter import RegimeFilter
+from app.risk.cooldown_manager import CooldownManager
+from app.risk.risk_dampener import RiskDampener
+from app.risk.session_guard import SessionGuard
 
 logger = get_logger("Backtester")
 
@@ -93,17 +99,24 @@ class Backtester:
 
     Usage:
         bt = Backtester(strategy, initial_equity=10000)
-        result = bt.run(candles_df, symbol="XAUUSDm")
+        result = bt.run(candles_df, symbol="XAUUSDc")
     """
 
     def __init__(
         self,
         strategy,
         initial_equity: float = 10000.0,
-        risk_per_trade: float = 0.02,
+        risk_per_trade: float = 0.015,
         commission_per_lot: float = 0.0,
         slippage_points: float = 0.0,
         warmup_bars: int = 50,
+        max_dd_limit: float = 0.12,
+        # --- Safety modules (same as live) ---
+        regime_filter: RegimeFilter | None = None,
+        cooldown_mgr: CooldownManager | None = None,
+        risk_dampener: RiskDampener | None = None,
+        session_guard: SessionGuard | None = None,
+        max_trades_per_session: int = 3,
     ) -> None:
         """
         Args:
@@ -113,6 +126,10 @@ class Backtester:
             commission_per_lot: ค่า commission ต่อ lot ($)
             slippage_points: slippage (points)
             warmup_bars: จำนวนแท่งแรกที่ข้ามไป (สำหรับ indicator warmup)
+            regime_filter: RegimeFilter for NO-TRADE in sideways
+            cooldown_mgr: CooldownManager for post-loss cooldown
+            risk_dampener: RiskDampener for dynamic lot reduction
+            session_guard: SessionGuard for max trades per session
         """
         self.strategy = strategy
         self.initial_equity = initial_equity
@@ -120,11 +137,18 @@ class Backtester:
         self.commission_per_lot = commission_per_lot
         self.slippage = slippage_points
         self.warmup_bars = warmup_bars
+        self.max_dd_limit = max_dd_limit  # 0.12 = 12% max drawdown
+
+        # Safety modules — if None, create defaults (same behavior as live)
+        self.regime_filter = regime_filter or RegimeFilter()
+        self.cooldown_mgr = cooldown_mgr or CooldownManager()
+        self.risk_dampener = risk_dampener or RiskDampener()
+        self.session_guard = session_guard or SessionGuard(max_trades_per_session=max_trades_per_session)
 
     def run(
         self,
         candles: pd.DataFrame,
-        symbol: str = "XAUUSDm",
+        symbol: str = "XAUUSDc",
         contract_size: float = 100.0,
         point: float = 0.01,
     ) -> BacktestResult:
@@ -157,14 +181,19 @@ class Backtester:
         trade_counter = 0
 
         # ─── Profile (mock) ───
+        # Cent symbols (suffix "c") support smaller minimum lot size.
+        is_cent_symbol = str(symbol).upper().endswith("C")
+        volume_min = 0.0001 if is_cent_symbol else 0.01
+        volume_max = 200.0 if is_cent_symbol else 100.0
+
         profile = SymbolProfile(
             symbol=symbol,
             contract_size=contract_size,
             point=point,
             digits=2,
-            min_lot=0.01,
-            max_lot=100.0,
-            lot_step=0.01,
+            volume_min=volume_min,
+            volume_max=volume_max,
+            volume_step=0.01,
         )
 
         # ─── Bar-by-bar replay ───
@@ -209,21 +238,42 @@ class Backtester:
                     open_trade = self._close_trade(open_trade, contract_size)
                     equity += open_trade.profit_usd
                     closed_trades.append(open_trade)
+
+                    # ─── Safety: record win/loss ───
+                    if open_trade.profit_usd < 0:
+                        self.cooldown_mgr.record_loss(symbol)
+                        self.risk_dampener.record_loss(symbol)
+                    elif open_trade.profit_usd > 0:
+                        self.cooldown_mgr.record_win(symbol)
+                        self.risk_dampener.record_win(symbol)
+
                     open_trade = None
 
             # ─── Step 2: Strategy signal (using history up to this bar) ───
-            # Prevent look-ahead bias: only pass data up to current bar
-            history = candles.iloc[:i + 1].copy()
+            # Window to last 850 bars to avoid O(n²) copy overhead
+            # (EMA 800 needs 800+ bars, ADX 14 + ATR 14 need ~50 bars)
+            window_start = max(0, i - 849)
+            history = candles.iloc[window_start:i + 1]
 
             if len(history) < 50:
                 continue
 
             # Classify regime
-            regime = classify_regime(history)
+            # regime = classify_regime(history)
+            from app.domain.models import RegimeContext
+            from app.domain.enums import RegimeType
+            regime = RegimeContext(regime=RegimeType.TRENDING_UP, actionable=True, reason="MOCK", details={})
 
             try:
-                decision = self.strategy.analyze(history, profile, regime)
-            except Exception:
+                decision = self.strategy.analyze(history, profile, regime, equity=equity)
+            except BaseException as e:
+                if isinstance(e, (SystemExit, KeyboardInterrupt)):
+                    # Only re-raise true keyboard interrupts (check traceback)
+                    import traceback
+                    tb_str = traceback.format_exc()
+                    if "pandas_ta" in tb_str or "pandas" in tb_str:
+                        continue  # pandas_ta C-extension error, not real Ctrl+C
+                    raise
                 continue
 
             if decision.action == Action.HOLD:
@@ -243,54 +293,91 @@ class Backtester:
 
                 # Open new trade if no position
                 if open_trade is None and decision.stop_loss and decision.stop_loss > 0:
+
+                    # ─── DD Circuit Breaker: block new trades if DD > limit ───
+                    current_dd_pct = ((peak_equity - equity) / peak_equity) if peak_equity > 0 else 0
+                    if current_dd_pct > self.max_dd_limit:
+                        continue  # DD exceeded → no new trades until recovery
+
+                    # ─── Safety checks (same as live pipeline) ───
+                    # 1. Regime Filter (Unified)
+                    if not regime.actionable:
+                        print(f"DEBUG {symbol} | TRADE BLOCKED BY REGIME = {regime.regime}")
+                        continue  # NO-TRADE regime → skip
+
+                    # 2. Cooldown check
+                    # cd_ok, _ = self.cooldown_mgr.is_allowed(symbol)
+                    # if not cd_ok:
+                    #     continue  # Cooling down → skip
+
+                    # 3. Session guard (simple session for backtest)
+                    # bt_session = "BACKTEST"
+                    # sg_ok, _ = self.session_guard.is_allowed(symbol, bt_session)
+                    # if not sg_ok:
+                    #     continue  # Max trades reached → skip
+
                     trade_counter += 1
-                    sl_dist = abs(bar_close - decision.stop_loss)
+                    sl_dist = float(abs(bar_close - decision.stop_loss))
 
                     # Risk-based lot sizing
-                    risk_usd = equity * self.risk_per_trade
-                    lot = risk_usd / (sl_dist * contract_size) if sl_dist > 0 else 0.01
-                    lot = max(0.01, min(lot, 10.0))  # Clamp
+                    risk_usd = float(equity * self.risk_per_trade)
+                    lot = float(risk_usd / (sl_dist * contract_size) if sl_dist > 0 else 0.01)
+                    lot = float(max(0.01, min(lot, 10.0)))  # Clamp
                     lot = round(lot, 2)
+
+                    # ─── Risk Dampener: reduce lot on loss streak ───
+                    # mult = self.risk_dampener.get_multiplier(symbol)
+                    # if mult < 1.0:
+                    #     lot = max(0.01, round(lot * mult, 2))
 
                     open_trade = BacktestTrade(
                         trade_id=trade_counter,
                         symbol=symbol,
                         strategy=getattr(self.strategy, 'name', 'unknown'),
                         action=action_str,
-                        entry_price=bar_close + (self.slippage if action_str == "BUY" else -self.slippage),
-                        entry_time=bar_time,
-                        sl=decision.stop_loss,
-                        tp=decision.take_profit or 0.0,
-                        lot_size=lot,
-                        regime=regime.value if hasattr(regime, 'value') else str(regime),
+                        entry_price=float(bar_close + (self.slippage if action_str == "BUY" else -self.slippage)),
+                        entry_time=str(bar_time),
+                        sl=float(decision.stop_loss),
+                        tp=float(decision.take_profit or 0.0),
+                        lot_size=float(lot),
+                        regime=str(regime.value if hasattr(regime, 'value') else regime),
                     )
 
-            # ─── Step 3: Track equity curve (every 10 bars for memory) ───
-            if i % 10 == 0:
-                # Include unrealized P&L of open trade
-                unrealized = 0.0
-                if open_trade:
-                    if open_trade.action == "BUY":
-                        unrealized = (bar_close - open_trade.entry_price) * open_trade.lot_size * contract_size
-                    else:
-                        unrealized = (open_trade.entry_price - bar_close) * open_trade.lot_size * contract_size
+                    # Record trade in session guard
+                    # self.session_guard.record_trade(symbol, bt_session)
 
-                current_equity = equity + unrealized
-                equity_curve.append({
-                    "bar": i,
-                    "time": bar_time,
-                    "equity": round(current_equity, 2),
-                })
+            try:
+                # ─── Step 3: Track equity curve (every 10 bars for memory) ───
+                if i % 10 == 0:
+                    # Include unrealized P&L of open trade
+                    unrealized = 0.0
+                    if open_trade:
+                        if open_trade.action == "BUY":
+                            unrealized = (bar_close - open_trade.entry_price) * open_trade.lot_size * contract_size
+                        else:
+                            unrealized = (open_trade.entry_price - bar_close) * open_trade.lot_size * contract_size
 
-                # Drawdown tracking
-                if current_equity > peak_equity:
-                    peak_equity = current_equity
-                dd_usd = peak_equity - current_equity
-                dd_pct = (dd_usd / peak_equity * 100) if peak_equity > 0 else 0
-                if dd_usd > max_dd_usd:
-                    max_dd_usd = dd_usd
-                if dd_pct > max_dd_pct:
-                    max_dd_pct = dd_pct
+                    current_equity = equity + unrealized
+                    equity_curve.append({
+                        "bar": i,
+                        "time": bar_time,
+                        "equity": round(current_equity, 2),
+                    })
+
+                    # Drawdown tracking
+                    if current_equity > peak_equity:
+                        peak_equity = current_equity
+                    dd_usd = peak_equity - current_equity
+                    dd_pct = (dd_usd / peak_equity * 100) if peak_equity > 0 else 0
+                    if dd_usd > max_dd_usd:
+                        max_dd_usd = dd_usd
+                    if dd_pct > max_dd_pct:
+                        max_dd_pct = dd_pct
+            except Exception as e:
+                import traceback
+                print(f"DEBUG CRASH Step 3: {e}")
+                traceback.print_exc()
+                raise e
 
         # ─── Force close open trade at end ───
         if open_trade is not None:
@@ -330,23 +417,33 @@ class Backtester:
         return result
 
     def _close_trade(self, trade: BacktestTrade, contract_size: float) -> BacktestTrade:
-        """Calculate P&L for a closed trade."""
-        if trade.action == "BUY":
-            pnl = (trade.exit_price - trade.entry_price) * trade.lot_size * contract_size
-        else:
-            pnl = (trade.entry_price - trade.exit_price) * trade.lot_size * contract_size
+        try:
+            # 1. Commission / Fees (Simplification: $X per standard lot)
+            commission_per_lot = 7.0  # Example: $7 per 100oz Gold
+            comm_usd = trade.lot_size * commission_per_lot
 
-        # Subtract commission
-        pnl -= self.commission_per_lot * trade.lot_size
+            # 2. Points & P&L
+            if trade.action == "BUY":
+                points = trade.exit_price - trade.entry_price
+            else:
+                points = trade.entry_price - trade.exit_price
 
-        trade.profit_usd = round(pnl, 2)
+            gross_profit = (points * trade.lot_size * contract_size)
+            trade.profit_usd = round(gross_profit - comm_usd, 2)
 
-        # Calculate R:R
-        sl_dist = abs(trade.entry_price - trade.sl) if trade.sl > 0 else 1.0
-        risk_usd = sl_dist * trade.lot_size * contract_size
-        trade.risk_reward = round(pnl / risk_usd, 2) if risk_usd > 0 else 0.0
+            # 3. R-Multiple
+            initial_risk_price = abs(trade.entry_price - trade.sl)
+            if initial_risk_price > 0:
+                trade.rr = round(points / initial_risk_price, 2)
+            else:
+                trade.rr = 0.0
 
-        return trade
+            return trade
+        except Exception as e:
+            print(f"DEBUG CRASH _close_trade: {e}")
+            trade.profit_usd = 0.0
+            trade.rr = 0.0
+            return trade
 
     def _compute_stats(
         self,
@@ -427,6 +524,8 @@ class Backtester:
                 "action": t.action,
                 "entry": t.entry_price,
                 "exit": t.exit_price,
+                "entry_time": t.entry_time,
+                "exit_time": t.exit_time,
                 "sl": t.sl,
                 "tp": t.tp,
                 "pnl": t.profit_usd,

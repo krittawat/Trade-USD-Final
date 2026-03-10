@@ -1,0 +1,59 @@
+﻿from .base_strategy import BaseStrategy, StrategyDecision
+from typing import Dict, Any, Optional
+
+class TrendFilterM15Strategy(BaseStrategy):
+    """
+    Strategy using M15 EMA 50/200 Trend Filter for M5 trading.
+    As requested by user: M15 Trend Filter M15 for M5 Trading.
+    """
+    EMA_FAST = 50
+    EMA_SLOW = 200
+
+    def analyze(self, **kwargs) -> StrategyDecision:
+        # This strategy specifically looks at M15 data
+        # In multi-symbol StreamManager, this will be fed from the M15 aggregator
+        ema_fast_m15 = kwargs.get('ema50_m15')
+        ema_slow_m15 = kwargs.get('ema200_m15')
+        price_m15 = kwargs.get('price_m15')
+        
+        # Also need current M5 signal to filter
+        m5_signal = kwargs.get('m5_signal', 'NO_TRADE')
+        m5_reason = kwargs.get('m5_reason', "")
+        
+        trend_bias = "NO_TRADE"
+        if ema_fast_m15 > ema_slow_m15 and price_m15 > ema_fast_m15:
+            trend_bias = "LONG_ONLY"
+        elif ema_fast_m15 < ema_slow_m15 and price_m15 < ema_fast_m15:
+            trend_bias = "SHORT_ONLY"
+            
+        final_signal = "NO_TRADE"
+        reason = f"Trend Filter (M15): {trend_bias}"
+        
+        if trend_bias == "LONG_ONLY" and m5_signal == "BUY":
+            final_signal = "BUY"
+            reason = f"CONFIRMED LONG (M15 Bias): {m5_reason}"
+        elif trend_bias == "SHORT_ONLY" and m5_signal == "SELL":
+            final_signal = "SELL"
+            reason = f"CONFIRMED SHORT (M15 Bias): {m5_reason}"
+        else:
+            reason = f"FILTERED: M15 {trend_bias}, M5 {m5_signal}"
+
+        return StrategyDecision(
+            signal=final_signal,
+            entry_price=kwargs.get('close') if final_signal != "NO_TRADE" else None,
+            sl=kwargs.get('sl') if final_signal != "NO_TRADE" else None,
+            tp=kwargs.get('tp') if final_signal != "NO_TRADE" else None,
+            reason=reason,
+            confidence=0.9 if final_signal != "NO_TRADE" else 0.0,
+            risk_pct=kwargs.get('risk_pct', 1.0)
+        )
+
+    def get_status(self) -> Dict[str, Any]:
+        return {
+            "name": "M15 Trend Filter",
+            "config": {
+                "ema_fast": self.EMA_FAST,
+                "ema_slow": self.EMA_SLOW,
+                "tf": "M15"
+            }
+        }

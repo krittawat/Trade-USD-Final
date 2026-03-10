@@ -38,7 +38,23 @@ class DuckDBStore:
 
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = duckdb.connect(str(self.db_path))
+        # The 8GB RAM Shield: limit RAM and CPU usage so it never crashes the system
+        try:
+            self._conn.execute("PRAGMA memory_limit='1GB'")
+            self._conn.execute("PRAGMA threads=2")
+        except Exception as e:
+            logger.warning("duckdb_pragma_failed", extra={"error": str(e)})
         logger.info("duckdb_connected", extra={"path": str(self.db_path)})
+
+    def health_check(self) -> bool:
+        """Check if DuckDB connection is healthy."""
+        if not self._conn:
+            return False
+        try:
+            self._conn.execute("SELECT 1")
+            return True
+        except Exception:
+            return False
 
     def compute_metrics(self, symbol: str | None = None) -> dict:
         """
@@ -67,15 +83,29 @@ class DuckDBStore:
             "total_trades": 0,
         }
 
-    def health_check(self) -> bool:
-        """ตรวจสอบว่า DuckDB ยังทำงานได้."""
+    def get_candles(self, symbol: str, timeframe: str, data_dir: str | Path = "data/exports/mtf") -> "pd.DataFrame | None":
+        """
+        Retrieve candles for a specific symbol and timeframe using DuckDB `read_parquet`.
+        Returns pandas DataFrame.
+        """
+        if not self._conn:
+            return None
+            
+        data_path = Path(data_dir)
+        pq_file = data_path / f"{symbol}_{timeframe}.parquet"
+        
+        if not pq_file.exists():
+            logger.warning("duckdb_parquet_not_found", extra={"file": str(pq_file)})
+            return None
+            
         try:
-            if self._conn:
-                self._conn.execute("SELECT 1")
-                return True
-        except Exception:
-            pass
-        return False
+            safe_path = str(pq_file).replace("\\", "/")
+            query = f"SELECT * FROM read_parquet('{safe_path}') ORDER BY time ASC"
+            df = self._conn.execute(query).df()
+            return df
+        except Exception as e:
+            logger.error("duckdb_get_candles_error", extra={"file": str(pq_file), "error": str(e)})
+            return None
 
     def disconnect(self) -> None:
         """ปิดการเชื่อมต่อ."""

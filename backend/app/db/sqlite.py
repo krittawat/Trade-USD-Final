@@ -42,7 +42,7 @@ class SQLiteStore:
     def connect(self) -> None:
         """เปิดการเชื่อมต่อ SQLite — สร้างไฟล์ถ้ายังไม่มี."""
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(self.db_path))
+        self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")  # balance safety + speed
@@ -50,7 +50,7 @@ class SQLiteStore:
         self._run_migrations()
 
     def _run_migrations(self) -> None:
-        """สร้างตารางที่จำเป็น (idempotent)."""
+        """สร้างตารางที่จำเป็น (idempotent) และ migrate schema ใหม่."""
         assert self._conn is not None, "ต้อง connect() ก่อนใช้งาน"
 
         # Trade journal
@@ -108,7 +108,7 @@ class SQLiteStore:
             )
         """)
 
-        # Shadow trades — virtual trades จาก shadow strategies
+        # Shadow trades
         self._conn.execute("""
             CREATE TABLE IF NOT EXISTS shadow_trades (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -130,22 +130,157 @@ class SQLiteStore:
             )
         """)
 
-        # Create indexes for performance
+        # Backtest routing
         self._conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_dt_symbol ON decision_traces(symbol, timestamp)
+            CREATE TABLE IF NOT EXISTS backtest_routing (
+                symbol TEXT NOT NULL,
+                regime TEXT NOT NULL,
+                strategy TEXT NOT NULL,
+                profit_factor REAL DEFAULT 0,
+                win_rate REAL DEFAULT 0,
+                total_trades INTEGER DEFAULT 0,
+                total_pnl REAL DEFAULT 0,
+                score REAL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (symbol, regime)
+            )
         """)
+
+        # Strategy params
         self._conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_tj_symbol ON trade_journal(symbol, entry_time)
+            CREATE TABLE IF NOT EXISTS strategy_params (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL,
+                strategy_name TEXT NOT NULL,
+                params_json TEXT NOT NULL,
+                win_rate REAL DEFAULT 0,
+                profit_factor REAL DEFAULT 0,
+                total_pnl REAL DEFAULT 0,
+                max_drawdown_pct REAL DEFAULT 0,
+                total_trades INTEGER DEFAULT 0,
+                backtest_days INTEGER DEFAULT 0,
+                label TEXT DEFAULT '',
+                is_active INTEGER DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(symbol, strategy_name)
+            )
         """)
+
+        # Strategy registry — dynamic strategy-regime mapping (replaces hardcoded TEMPLATE_REGISTRY)
         self._conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_st_symbol ON shadow_trades(symbol, timestamp)
+            CREATE TABLE IF NOT EXISTS strategy_registry (
+                strategy_name TEXT PRIMARY KEY,
+                class_name TEXT NOT NULL,
+                module_path TEXT NOT NULL,
+                timeframe TEXT DEFAULT 'M5',
+                asset_class TEXT DEFAULT '*',
+                suitable_regimes TEXT DEFAULT '[]',
+                priority INTEGER DEFAULT 50,
+                is_active INTEGER DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
         """)
+
+        # Backtest results
         self._conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_st_strategy ON shadow_trades(strategy_name, timestamp)
+            CREATE TABLE IF NOT EXISTS backtest_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL,
+                strategy_name TEXT NOT NULL,
+                label TEXT DEFAULT '',
+                params_json TEXT NOT NULL,
+                win_rate REAL DEFAULT 0,
+                profit_factor REAL DEFAULT 0,
+                total_pnl REAL DEFAULT 0,
+                max_drawdown_pct REAL DEFAULT 0,
+                total_trades INTEGER DEFAULT 0,
+                winning_trades INTEGER DEFAULT 0,
+                losing_trades INTEGER DEFAULT 0,
+                backtest_days INTEGER DEFAULT 0,
+                expectancy REAL DEFAULT 0,
+                per_regime_json TEXT DEFAULT '{}',
+                created_at TEXT NOT NULL
+            )
         """)
+
+        # ─── Migration: Add new columns for Currency/Lot Mode ───
+        self._safe_add_column("trade_journal", "account_currency", "TEXT DEFAULT 'USD'")
+        self._safe_add_column("trade_journal", "lot_mode", "TEXT DEFAULT 'STANDARD'")
+        self._safe_add_column("trade_journal", "symbol_suffix", "TEXT DEFAULT ''")
+        self._safe_add_column("trade_journal", "balance_usd", "REAL DEFAULT 0")
+        self._safe_add_column("trade_journal", "balance_account", "REAL DEFAULT 0")
+        
+        self._safe_add_column("decision_traces", "mode_details", "TEXT") # json details
+
+        # ─── Shadow evaluation columns (migration) ───
+        self._safe_add_column("shadow_trades", "outcome", "TEXT DEFAULT 'PENDING'")
+        self._safe_add_column("shadow_trades", "outcome_pnl", "REAL DEFAULT 0")
+        self._safe_add_column("shadow_trades", "evaluated_at", "TEXT")
+
+        # Shadow scoreboard — aggregated strategy performance from shadow trades
+        self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS shadow_scoreboard (
+                strategy_name TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                regime TEXT NOT NULL DEFAULT 'ALL',
+                total_signals INTEGER DEFAULT 0,
+                wins INTEGER DEFAULT 0,
+                losses INTEGER DEFAULT 0,
+                pending INTEGER DEFAULT 0,
+                total_pnl REAL DEFAULT 0,
+                win_rate REAL DEFAULT 0,
+                avg_confidence REAL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (strategy_name, symbol, regime)
+            )
+        """)
+
+        # Create indexes
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_dt_symbol ON decision_traces(symbol, timestamp)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_tj_symbol ON trade_journal(symbol, entry_time)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_st_symbol ON shadow_trades(symbol, timestamp)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_st_strategy ON shadow_trades(strategy_name, timestamp)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_st_outcome ON shadow_trades(outcome, timestamp)")
+        
+        # New indexes for strategy params/backtest
+        try:
+            self._conn.execute("CREATE INDEX IF NOT EXISTS idx_sp_symbol ON strategy_params(symbol, strategy_name)")
+            self._conn.execute("CREATE INDEX IF NOT EXISTS idx_br_symbol ON backtest_results(symbol, strategy_name)")
+        except Exception:
+            pass
+
+        # ─── Ticks table (แทน QuestDB) ───
+        self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS ticks (
+                ts TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                bid REAL,
+                ask REAL,
+                last REAL,
+                volume INTEGER DEFAULT 0,
+                flags INTEGER DEFAULT 0
+            )
+        """)
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ticks_sym_ts ON ticks (symbol, ts DESC)"
+        )
 
         self._conn.commit()
         logger.info("sqlite_migrations_complete")
+
+    def _safe_add_column(self, table: str, column: str, type_def: str) -> None:
+        """Add column if not exists (SQLite doesn't support IF NOT EXISTS for columns)."""
+        try:
+            # Check if column exists
+            cursor = self._conn.execute(f"PRAGMA table_info({table})")
+            columns = [info[1] for info in cursor.fetchall()]
+            if column not in columns:
+                self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {type_def}")
+                logger.info("sqlite_column_added", extra={"table": table, "column": column})
+        except Exception as e:
+            logger.warning("sqlite_add_column_failed", extra={"table": table, "column": column, "error": str(e)})
 
     # ====================================================================
     # Decision Trace Methods
@@ -179,7 +314,7 @@ class SQLiteStore:
         self._trace_buffer.append((
             datetime.now(timezone.utc).isoformat(),
             symbol, stage, result, action, confidence,
-            strategy_name, reason, json.dumps(details or {}),
+            strategy_name, reason, json.dumps(details or {}, default=str),
             regime, session, cycle, mode,
         ))
         # ─── Auto-flush เมื่อ buffer เต็ม ───
@@ -273,6 +408,18 @@ class SQLiteStore:
                 "SELECT * FROM decision_traces ORDER BY timestamp DESC LIMIT ?",
                 (limit,),
             ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_recent_trades(self, limit: int = 50) -> list[dict]:
+        """ดึงรายการเทรดล่าสุดสำหรับ Auto Coach."""
+        if not self._conn:
+            return []
+        rows = self._conn.execute(
+            """SELECT * FROM trade_journal 
+               WHERE profit_usd IS NOT NULL 
+               ORDER BY exit_time DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
         return [dict(r) for r in rows]
 
     # ====================================================================
@@ -581,6 +728,535 @@ class SQLiteStore:
             return deleted
         except Exception as e:
             logger.error("prune_shadow_error", extra={"error": str(e)})
+            return 0
+
+    # ────────────────────────────────────────────────────────────────
+    # Shadow Evaluation Methods
+    # ────────────────────────────────────────────────────────────────
+
+    def get_unevaluated_shadows(self, limit: int = 200) -> list[dict]:
+        """Get shadow trades that haven't been evaluated yet."""
+        if not self._conn:
+            return []
+        try:
+            rows = self._conn.execute("""
+                SELECT id, timestamp, symbol, strategy_name, action,
+                       confidence, regime, session,
+                       entry_price, stop_loss, take_profit
+                FROM shadow_trades
+                WHERE outcome = 'PENDING' OR outcome IS NULL
+                ORDER BY timestamp ASC
+                LIMIT ?
+            """, (limit,)).fetchall()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error("get_unevaluated_shadows_error", extra={"error": str(e)})
+            return []
+
+    def update_shadow_outcome(
+        self, shadow_id: int, outcome: str, pnl: float
+    ) -> None:
+        """Update a shadow trade with its evaluated outcome."""
+        if not self._conn:
+            return
+        try:
+            self._conn.execute("""
+                UPDATE shadow_trades
+                SET outcome = ?, outcome_pnl = ?, evaluated_at = ?
+                WHERE id = ?
+            """, (outcome, round(pnl, 4), datetime.now(timezone.utc).isoformat(), shadow_id))
+            self._conn.commit()
+        except Exception as e:
+            logger.error("update_shadow_outcome_error", extra={"error": str(e), "id": shadow_id})
+
+    def update_shadow_outcomes_batch(self, updates: list[tuple]) -> int:
+        """Batch update shadow outcomes. Each tuple: (outcome, pnl, id)."""
+        if not self._conn or not updates:
+            return 0
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            data = [(o, round(p, 4), now, sid) for o, p, sid in updates]
+            self._conn.executemany("""
+                UPDATE shadow_trades
+                SET outcome = ?, outcome_pnl = ?, evaluated_at = ?
+                WHERE id = ?
+            """, data)
+            self._conn.commit()
+            return len(data)
+        except Exception as e:
+            logger.error("batch_shadow_outcome_error", extra={"error": str(e)})
+            return 0
+
+    def upsert_shadow_score(
+        self, strategy_name: str, symbol: str, regime: str,
+        wins: int, losses: int, pending: int, total_pnl: float,
+        avg_confidence: float,
+    ) -> None:
+        """Upsert shadow scoreboard entry."""
+        if not self._conn:
+            return
+        total = wins + losses + pending
+        wr = round(wins / (wins + losses) * 100, 1) if (wins + losses) > 0 else 0.0
+        try:
+            self._conn.execute("""
+                INSERT INTO shadow_scoreboard
+                    (strategy_name, symbol, regime, total_signals, wins, losses,
+                     pending, total_pnl, win_rate, avg_confidence, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(strategy_name, symbol, regime)
+                DO UPDATE SET
+                    total_signals = excluded.total_signals,
+                    wins = excluded.wins,
+                    losses = excluded.losses,
+                    pending = excluded.pending,
+                    total_pnl = excluded.total_pnl,
+                    win_rate = excluded.win_rate,
+                    avg_confidence = excluded.avg_confidence,
+                    updated_at = excluded.updated_at
+            """, (strategy_name, symbol, regime, total, wins, losses,
+                  pending, round(total_pnl, 2), wr, round(avg_confidence, 3),
+                  datetime.now(timezone.utc).isoformat()))
+            self._conn.commit()
+        except Exception as e:
+            logger.error("upsert_shadow_score_error", extra={"error": str(e)})
+
+    def get_shadow_scoreboard(self, symbol: str | None = None) -> list[dict]:
+        """Get shadow scoreboard — ranked by win_rate."""
+        if not self._conn:
+            return []
+        try:
+            query = "SELECT * FROM shadow_scoreboard WHERE total_signals > 0"
+            params: list = []
+            if symbol:
+                query += " AND symbol = ?"
+                params.append(symbol)
+            query += " ORDER BY win_rate DESC, total_pnl DESC"
+            rows = self._conn.execute(query, params).fetchall()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error("get_shadow_scoreboard_error", extra={"error": str(e)})
+            return []
+
+    def get_shadow_stats_for_scoring(self) -> list[dict]:
+        """Aggregate shadow trades for scoreboard refresh."""
+        if not self._conn:
+            return []
+        try:
+            rows = self._conn.execute("""
+                SELECT strategy_name, symbol, regime,
+                       COUNT(*) as total,
+                       SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                       SUM(CASE WHEN outcome = 'LOSS' THEN 1 ELSE 0 END) as losses,
+                       SUM(CASE WHEN outcome = 'PENDING' OR outcome IS NULL THEN 1 ELSE 0 END) as pending,
+                       SUM(COALESCE(outcome_pnl, 0)) as total_pnl,
+                       AVG(confidence) as avg_confidence
+                FROM shadow_trades
+                WHERE action IN ('BUY', 'SELL')
+                GROUP BY strategy_name, symbol, regime
+            """).fetchall()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error("shadow_stats_error", extra={"error": str(e)})
+            return []
+
+    # ====================================================================
+    # Strategy Params — persist optimized parameters
+    # ====================================================================
+
+    def save_strategy_params(
+        self,
+        *,
+        symbol: str,
+        strategy_name: str,
+        params: dict,
+        win_rate: float = 0.0,
+        profit_factor: float = 0.0,
+        total_pnl: float = 0.0,
+        max_drawdown_pct: float = 0.0,
+        total_trades: int = 0,
+        backtest_days: int = 0,
+        label: str = "",
+    ) -> None:
+        """บันทึก/อัพเดทค่า params ที่ optimize แล้ว — ใช้ UPSERT by (symbol, strategy_name)."""
+        if not self._conn:
+            return
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            self._conn.execute("""
+                INSERT INTO strategy_params
+                    (symbol, strategy_name, params_json, win_rate, profit_factor,
+                     total_pnl, max_drawdown_pct, total_trades, backtest_days,
+                     label, is_active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                ON CONFLICT(symbol, strategy_name)
+                DO UPDATE SET
+                    params_json = excluded.params_json,
+                    win_rate = excluded.win_rate,
+                    profit_factor = excluded.profit_factor,
+                    total_pnl = excluded.total_pnl,
+                    max_drawdown_pct = excluded.max_drawdown_pct,
+                    total_trades = excluded.total_trades,
+                    backtest_days = excluded.backtest_days,
+                    label = excluded.label,
+                    is_active = 1,
+                    updated_at = excluded.updated_at
+            """, (
+                symbol, strategy_name, json.dumps(params),
+                win_rate, profit_factor, total_pnl, max_drawdown_pct,
+                total_trades, backtest_days, label, now, now,
+            ))
+            self._conn.commit()
+            logger.info("strategy_params_saved", extra={
+                "symbol": symbol, "strategy": strategy_name,
+                "label": label, "win_rate": win_rate,
+            })
+        except Exception as e:
+            logger.error("save_strategy_params_error", extra={"error": str(e)})
+
+    def get_strategy_params(
+        self,
+        symbol: str,
+        strategy_name: str,
+    ) -> dict | None:
+        """ดึงค่า params ที่ optimize แล้ว — return None ถ้าไม่มี."""
+        if not self._conn:
+            return None
+        try:
+            row = self._conn.execute(
+                """SELECT * FROM strategy_params
+                   WHERE symbol = ? AND strategy_name = ? AND is_active = 1""",
+                (symbol, strategy_name),
+            ).fetchone()
+            if row:
+                d = dict(row)
+                d['params'] = json.loads(d.get('params_json', '{}'))
+                return d
+            return None
+        except Exception as e:
+            logger.error("get_strategy_params_error", extra={"error": str(e)})
+            return None
+
+    def get_all_strategy_params(self, symbol: str | None = None) -> list[dict]:
+        """ดึงทุก params ที่ optimize แล้ว."""
+        if not self._conn:
+            return []
+        try:
+            if symbol:
+                rows = self._conn.execute(
+                    "SELECT * FROM strategy_params WHERE symbol = ? AND is_active = 1 ORDER BY win_rate DESC",
+                    (symbol,),
+                ).fetchall()
+            else:
+                rows = self._conn.execute(
+                    "SELECT * FROM strategy_params WHERE is_active = 1 ORDER BY symbol, win_rate DESC",
+                ).fetchall()
+            result = []
+            for r in rows:
+                d = dict(r)
+                d['params'] = json.loads(d.get('params_json', '{}'))
+                result.append(d)
+            return result
+        except Exception as e:
+            logger.error("get_all_params_error", extra={"error": str(e)})
+            return []
+
+    # ====================================================================
+    # Backtest Results — audit trail
+    # ====================================================================
+
+    def save_backtest_result(
+        self,
+        *,
+        symbol: str,
+        strategy_name: str,
+        label: str = "",
+        params: dict | None = None,
+        win_rate: float = 0.0,
+        profit_factor: float = 0.0,
+        total_pnl: float = 0.0,
+        max_drawdown_pct: float = 0.0,
+        total_trades: int = 0,
+        winning_trades: int = 0,
+        losing_trades: int = 0,
+        backtest_days: int = 0,
+        expectancy: float = 0.0,
+        per_regime: dict | None = None,
+    ) -> None:
+        """บันทึกผลลัพธ์ backtest สำหรับ audit trail — append-only."""
+        if not self._conn:
+            return
+        try:
+            self._conn.execute("""
+                INSERT INTO backtest_results
+                    (symbol, strategy_name, label, params_json,
+                     win_rate, profit_factor, total_pnl, max_drawdown_pct,
+                     total_trades, winning_trades, losing_trades,
+                     backtest_days, expectancy, per_regime_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                symbol, strategy_name, label,
+                json.dumps(params or {}),
+                win_rate, profit_factor, total_pnl, max_drawdown_pct,
+                total_trades, winning_trades, losing_trades,
+                backtest_days, expectancy,
+                json.dumps(per_regime or {}),
+                datetime.now(timezone.utc).isoformat(),
+            ))
+            self._conn.commit()
+        except Exception as e:
+            logger.error("save_backtest_result_error", extra={"error": str(e)})
+
+    def get_backtest_results(
+        self,
+        symbol: str | None = None,
+        strategy_name: str | None = None,
+        limit: int = 50,
+    ) -> list[dict]:
+        """ดึงผลลัพธ์ backtest จาก audit trail."""
+        if not self._conn:
+            return []
+        try:
+            query = "SELECT * FROM backtest_results WHERE 1=1"
+            params_list: list = []
+            if symbol:
+                query += " AND symbol = ?"
+                params_list.append(symbol)
+            if strategy_name:
+                query += " AND strategy_name = ?"
+                params_list.append(strategy_name)
+            query += " ORDER BY created_at DESC LIMIT ?"
+            params_list.append(limit)
+            rows = self._conn.execute(query, params_list).fetchall()
+            result = []
+            for r in rows:
+                d = dict(r)
+                d['params'] = json.loads(d.get('params_json', '{}'))
+                d['per_regime'] = json.loads(d.get('per_regime_json', '{}'))
+                result.append(d)
+            return result
+        except Exception as e:
+            logger.error("get_backtest_results_error", extra={"error": str(e)})
+            return []
+
+    # ====================================================================
+    # Backtest Routing — data-driven strategy selection
+    # ====================================================================
+
+    def save_backtest_routing(
+        self,
+        *,
+        symbol: str,
+        regime: str,
+        strategy: str,
+        profit_factor: float = 0.0,
+        win_rate: float = 0.0,
+        total_trades: int = 0,
+        total_pnl: float = 0.0,
+        score: float = 0.0,
+    ) -> None:
+        """Upsert backtest routing entry — best strategy per (symbol, regime)."""
+        if not self._conn:
+            return
+        try:
+            self._conn.execute("""
+                INSERT INTO backtest_routing
+                    (symbol, regime, strategy, profit_factor, win_rate,
+                     total_trades, total_pnl, score, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(symbol, regime)
+                DO UPDATE SET
+                    strategy = excluded.strategy,
+                    profit_factor = excluded.profit_factor,
+                    win_rate = excluded.win_rate,
+                    total_trades = excluded.total_trades,
+                    total_pnl = excluded.total_pnl,
+                    score = excluded.score,
+                    updated_at = excluded.updated_at
+            """, (
+                symbol, regime, strategy,
+                profit_factor, win_rate, total_trades,
+                total_pnl, score,
+                datetime.now(timezone.utc).isoformat(),
+            ))
+            self._conn.commit()
+        except Exception as e:
+            logger.error("save_routing_error", extra={"error": str(e)})
+
+    def get_backtest_routing(self, symbol: str | None = None) -> list[dict]:
+        """Get backtest routing table (optionally filtered by symbol)."""
+        if not self._conn:
+            return []
+        try:
+            if symbol:
+                rows = self._conn.execute(
+                    "SELECT * FROM backtest_routing WHERE symbol = ? ORDER BY score DESC",
+                    (symbol,),
+                ).fetchall()
+            else:
+                rows = self._conn.execute(
+                    "SELECT * FROM backtest_routing ORDER BY symbol, score DESC",
+                ).fetchall()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error("get_routing_error", extra={"error": str(e)})
+            return []
+
+    # ====================================================================
+    # Strategy Registry — dynamic strategy-regime mapping
+    # ====================================================================
+
+    def save_strategy_registry(
+        self,
+        *,
+        strategy_name: str,
+        class_name: str,
+        module_path: str,
+        timeframe: str = "M5",
+        asset_class: str = "*",
+        suitable_regimes: list[str] | None = None,
+        priority: int = 50,
+        is_active: bool = True,
+    ) -> None:
+        """Upsert strategy registry entry — dynamic strategy-regime mapping."""
+        if not self._conn:
+            return
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            self._conn.execute("""
+                INSERT INTO strategy_registry
+                    (strategy_name, class_name, module_path, timeframe,
+                     asset_class, suitable_regimes, priority, is_active,
+                     created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(strategy_name)
+                DO UPDATE SET
+                    class_name = excluded.class_name,
+                    module_path = excluded.module_path,
+                    timeframe = excluded.timeframe,
+                    asset_class = excluded.asset_class,
+                    suitable_regimes = excluded.suitable_regimes,
+                    priority = excluded.priority,
+                    is_active = excluded.is_active,
+                    updated_at = excluded.updated_at
+            """, (
+                strategy_name, class_name, module_path, timeframe,
+                asset_class, json.dumps(suitable_regimes or []),
+                priority, 1 if is_active else 0, now, now,
+            ))
+            self._conn.commit()
+        except Exception as e:
+            logger.error("save_strategy_registry_error", extra={"error": str(e)})
+
+    def get_strategy_registry(self, active_only: bool = True) -> list[dict]:
+        """Get all registered strategies (optionally active only)."""
+        if not self._conn:
+            return []
+        try:
+            if active_only:
+                rows = self._conn.execute(
+                    "SELECT * FROM strategy_registry WHERE is_active = 1 ORDER BY priority DESC",
+                ).fetchall()
+            else:
+                rows = self._conn.execute(
+                    "SELECT * FROM strategy_registry ORDER BY priority DESC",
+                ).fetchall()
+            result = []
+            for r in rows:
+                d = dict(r)
+                d["suitable_regimes"] = json.loads(d.get("suitable_regimes", "[]"))
+                result.append(d)
+            return result
+        except Exception as e:
+            logger.error("get_strategy_registry_error", extra={"error": str(e)})
+            return []
+
+    # ====================================================================
+    # Tick Storage (แทน QuestDB — ประหยัด RAM, ไม่ต้อง JVM)
+    # ====================================================================
+
+    _TICK_BUFFER: list[tuple] = []
+    _TICK_FLUSH_SIZE = 50  # flush ทุก 50 ticks (batch I/O)
+
+    def ingest_ticks(self, symbol: str, ticks: list[dict]) -> None:
+        """
+        Batch INSERT ticks — ใช้ executemany + single commit.
+
+        Args:
+            symbol: ชื่อ symbol เช่น XAUUSDc
+            ticks: list ของ tick dict จาก MT5 (keys: time, bid, ask, last, volume, flags)
+        """
+        if not self._conn or not ticks:
+            return
+        try:
+            rows = []
+            for t in ticks:
+                ts_val = t.get("time")
+                if isinstance(ts_val, (int, float)):
+                    from datetime import datetime as _dt, timezone as _tz
+                    ts_str = _dt.fromtimestamp(ts_val, tz=_tz.utc).isoformat()
+                elif isinstance(ts_val, datetime):
+                    ts_str = ts_val.isoformat()
+                else:
+                    continue
+                rows.append((
+                    ts_str, symbol,
+                    t.get("bid", 0.0), t.get("ask", 0.0), t.get("last", 0.0),
+                    int(t.get("volume", 0)), int(t.get("flags", 0)),
+                ))
+            if not rows:
+                return
+            self._conn.executemany(
+                "INSERT INTO ticks (ts, symbol, bid, ask, last, volume, flags) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                rows,
+            )
+            self._conn.commit()
+            logger.debug("ticks_ingested", extra={"symbol": symbol, "count": len(rows)})
+        except Exception as e:
+            logger.debug("ticks_ingest_error", extra={"symbol": symbol, "error": str(e)})
+
+    def get_latest_ticks(self, symbols: list[str]) -> dict[str, dict]:
+        """
+        ดึง tick ล่าสุดของแต่ละ symbol.
+
+        Returns:
+            {symbol: {ts, bid, ask, last, volume}} — dict per symbol
+        """
+        if not self._conn or not symbols:
+            return {}
+        result: dict[str, dict] = {}
+        try:
+            for sym in symbols:
+                row = self._conn.execute(
+                    "SELECT ts, bid, ask, last, volume "
+                    "FROM ticks WHERE symbol = ? ORDER BY ts DESC LIMIT 1",
+                    (sym,),
+                ).fetchone()
+                if row:
+                    result[sym] = dict(row)
+        except Exception as e:
+            logger.debug("get_latest_ticks_error", extra={"error": str(e)})
+        return result
+
+    def cleanup_old_ticks(self, retention_days: int = 3) -> int:
+        """
+        ลบ ticks เก่ากว่า N วัน — ป้องกัน DB โตไม่หยุด.
+
+        Default: เก็บ 3 วัน (เหมือน QuestDB เดิม)
+        """
+        if not self._conn or retention_days <= 0:
+            return 0
+        try:
+            from datetime import timedelta
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+            cursor = self._conn.execute("DELETE FROM ticks WHERE ts < ?", (cutoff,))
+            deleted = cursor.rowcount
+            self._conn.commit()
+            if deleted > 0:
+                logger.info("ticks_pruned", extra={"deleted": deleted, "retention_days": retention_days})
+            return deleted
+        except Exception as e:
+            logger.error("ticks_prune_error", extra={"error": str(e)})
             return 0
 
     # ====================================================================

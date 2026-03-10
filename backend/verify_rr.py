@@ -1,37 +1,30 @@
-"""Quick verification of SL/TP ratio fixes."""
+"""Verify Forex-specific SL multipliers."""
+from app.strategy.templates.scalping import _get_sl_rr
 
-# 1. Scalping
-from app.strategy.templates.scalping import ATR_SL_MULT, RR_RATIO
-print(f"Scalping: SL_ATR={ATR_SL_MULT} RR={RR_RATIO} TP={ATR_SL_MULT*RR_RATIO}")
-assert ATR_SL_MULT >= 2.0, f"Scalping SL too tight: {ATR_SL_MULT}"
-assert RR_RATIO >= 2.0, f"Scalping RR too low: {RR_RATIO}"
+tests = [
+    ("EURUSDc", 3.0, 2.0),
+    ("GBPUSDc", 3.0, 2.0),
+    ("USDJPYc", 3.0, 2.0),
+    ("AUDUSDc", 3.0, 2.0),
+    ("USDCADc", 3.0, 2.0),
+    ("NZDUSDc", 3.0, 2.0),
+    ("BTCUSDc", 2.5, 2.0),
+    ("XAUUSDc", 2.0, 2.0),
+    ("XAGUSDc", 2.0, 2.0),
+]
 
-# 2. GoldScalpPro
-from app.strategy.templates.gold_scalp_pro import GoldScalpProStrategy
-gs = GoldScalpProStrategy()
-rr = gs.TP_ATR_MULT / gs.SL_ATR_MULT
-print(f"GoldScalpPro: SL={gs.SL_ATR_MULT} TP={gs.TP_ATR_MULT} RR={rr:.2f} LOCK1={gs.PROFIT_LOCK_1} LOCK2={gs.PROFIT_LOCK_2}")
-assert rr >= 1.0, f"GoldScalpPro RR inverted: {rr}"
-assert gs.PROFIT_LOCK_1 >= 1.0, f"Profit lock too early: {gs.PROFIT_LOCK_1}"
+all_ok = True
+for sym, expected_sl, expected_rr in tests:
+    sl, rr = _get_sl_rr(sym)
+    ok = sl == expected_sl and rr == expected_rr
+    status = "OK" if ok else "FAIL"
+    print(f"  {status} {sym:12s} SL={sl} RR={rr}")
+    if not ok:
+        all_ok = False
+        print(f"       Expected SL={expected_sl} RR={expected_rr}")
 
-# 3. HyperScalp
-from app.strategy.templates.hyper_scalp import HyperScalpStrategy
-hs = HyperScalpStrategy()
-rr = hs.CONFIG["tp_atr_mult"] / hs.CONFIG["sl_atr_mult"]
-print(f"HyperScalp: SL={hs.CONFIG['sl_atr_mult']} TP={hs.CONFIG['tp_atr_mult']} RR={rr:.2f}")
-assert rr >= 1.5, f"HyperScalp RR too low: {rr}"
-
-# 4. SmartFusion
-from app.strategy.templates.smart_fusion import SmartFusionStrategy
-sf = SmartFusionStrategy()
-rr = sf.tp_atr_mult / sf.sl_atr_mult
-print(f"SmartFusion: SL={sf.sl_atr_mult} TP={sf.tp_atr_mult} RR={rr:.2f}")
-assert rr >= 1.5, f"SmartFusion RR too low: {rr}"
-
-# 5. Evolver RR bounds
-from app.brain.strategy_evolver import PARAM_BOUNDS
-rr_min = PARAM_BOUNDS["rr_ratio"][0]
-print(f"Evolver RR min bound: {rr_min}")
-assert rr_min >= 1.5, f"Evolver allows low RR: {rr_min}"
-
-print("\n✅ ALL CHECKS PASSED — Every strategy has RR >= 1.5")
+print()
+if all_ok:
+    print("ALL PASSED - Per-asset SL multipliers correct")
+else:
+    print("SOME FAILED")

@@ -16,7 +16,7 @@ Logic:
 """
 
 import pandas as pd
-import pandas_ta as ta
+import app.analysis.indicators as ind
 
 from app.core.logging import get_logger
 from app.domain.enums import Action, RegimeType
@@ -32,10 +32,20 @@ ADX_PERIOD = 14      # ADX period
 ADX_THRESHOLD = 25   # ADX > 25 = trending
 RSI_PERIOD = 14      # RSI period
 ATR_PERIOD = 14      # ATR period
-ATR_SL_MULT = 2.5    # SL กว้าง (อนุญาต volatility)
-RR_TARGET = 3.0      # RR ขั้นต่ำ
-PULLBACK_ATR_MULT = 1.0  # ราคาต้องอยู่ภายใน 1 ATR จาก EMA 50 ถึงถือว่า pullback
+ATR_SL_MULT = 2.5    # SL กว้าง (default — Gold/BTC)
+RR_TARGET = 2.5      # RR ขั้นต่ำ (lowered from 3.0 for higher WR)
+PULLBACK_ATR_MULT = 1.5  # ราคาต้องอยู่ภายใน 1.5 ATR จาก EMA 50 (widened from 1.0)
 MIN_CONFIDENCE = 0.55
+
+# --- Per-Asset-Class SL Adjustment ---
+FOREX_PREFIXES = ("EUR", "GBP", "USD", "AUD", "NZD", "CAD", "CHF", "JPY")
+
+def _trend_sl_mult(symbol: str) -> float:
+    """Forex H1 needs wider SL for deep pullbacks — 3.0 vs default 2.5."""
+    s = symbol.upper()
+    if any(s.startswith(p) for p in FOREX_PREFIXES):
+        return 3.0   # Forex H1: wider for deep pullbacks
+    return ATR_SL_MULT  # Gold/BTC default
 
 
 class TrendRiderStrategy(BaseStrategy):
@@ -58,6 +68,7 @@ class TrendRiderStrategy(BaseStrategy):
         candles: pd.DataFrame,
         profile: SymbolProfile,
         regime: RegimeType = RegimeType.UNKNOWN,
+        **kwargs,
     ) -> Decision:
         """
         วิเคราะห์สัญญาณ trend riding.
@@ -71,19 +82,27 @@ class TrendRiderStrategy(BaseStrategy):
         """
         symbol = profile.symbol
 
+        # --- อ่านค่า Overrides จาก kwargs (AI Brain) ---
+        ema_fast_len = kwargs.get("ema_fast", EMA_FAST)
+        ema_slow_len = kwargs.get("ema_slow", EMA_SLOW)
+        adx_len = kwargs.get("adx_period", ADX_PERIOD)
+        atr_len = kwargs.get("atr_period", ATR_PERIOD)
+        rsi_len = kwargs.get("rsi_period", RSI_PERIOD)
+        min_conf = kwargs.get("confidence_min", MIN_CONFIDENCE)
+
         # --- ตรวจข้อมูล ---
-        if candles is None or len(candles) < EMA_SLOW + 10:
+        if candles is None or len(candles) < ema_slow_len + 10:
             return self.create_hold(
                 symbol=symbol,
-                reason=f"ข้อมูลไม่เพียงพอ (ต้อง {EMA_SLOW + 10} bars, มี {len(candles) if candles is not None else 0})",
+                reason=f"ข้อมูลไม่เพียงพอ (ต้อง {ema_slow_len + 10} bars, มี {len(candles) if candles is not None else 0})",
             )
 
         # --- Indicators ---
-        ema50 = ta.ema(candles["close"], length=EMA_FAST)
-        ema200 = ta.ema(candles["close"], length=EMA_SLOW)
-        adx_df = ta.adx(candles["high"], candles["low"], candles["close"], length=ADX_PERIOD)
-        rsi = ta.rsi(candles["close"], length=RSI_PERIOD)
-        atr = ta.atr(candles["high"], candles["low"], candles["close"], length=ATR_PERIOD)
+        ema50 = ta.ema(candles["close"], length=ema_fast_len)
+        ema200 = ta.ema(candles["close"], length=ema_slow_len)
+        adx_df = ta.adx(candles["high"], candles["low"], candles["close"], length=adx_len)
+        rsi = ta.rsi(candles["close"], length=rsi_len)
+        atr = ta.atr(candles["high"], candles["low"], candles["close"], length=atr_len)
 
         current_close = candles["close"].iloc[-1]
         ema50_val = ema50.iloc[-1] if ema50 is not None else None
@@ -120,6 +139,21 @@ class TrendRiderStrategy(BaseStrategy):
         distance_to_ema50 = abs(current_close - ema50_val)
         is_pullback = distance_to_ema50 <= (atr_val * PULLBACK_ATR_MULT)
 
+        # --- ATR Volatility Gate ---
+        # Skip trades in low-vol environments (ATR < 0.5× 3-period avg)
+        atr_avg = atr.iloc[-ATR_PERIOD * 3:].mean() if atr is not None else atr_val
+        atr_ratio = atr_val / atr_avg if atr_avg > 0 else 1.0
+        low_vol = atr_ratio < 0.5
+
+        if low_vol:
+            return self.create_hold(
+                symbol=symbol,
+                reason=f"ATR ratio {atr_ratio:.2f} < 0.5 (low volatility — skip)",
+            )
+
+        # --- RSI Previous value for bounce detection ---
+        rsi_prev = rsi.iloc[-2] if rsi is not None and len(rsi) >= 2 else None
+
         # --- Scoring ---
         confidence = 0.0
         action = Action.HOLD
@@ -146,6 +180,12 @@ class TrendRiderStrategy(BaseStrategy):
                 if current_close > ema50_val:
                     confidence += 0.10
                     reasons.append("ราคาเด้งขึ้นจาก EMA 50 (bullish bounce)")
+
+                # RSI bounce confirmation: RSI crossing above 40
+                if rsi_prev is not None and rsi_val is not None:
+                    if rsi_prev < 40 and rsi_val >= 40:
+                        confidence += 0.10
+                        reasons.append(f"RSI bounce {rsi_prev:.1f}→{rsi_val:.1f} (cross 40)")
 
             # RSI ไม่ overbought จัด
             if rsi_val is not None and 30 < rsi_val < 65:
@@ -176,20 +216,26 @@ class TrendRiderStrategy(BaseStrategy):
                     confidence += 0.10
                     reasons.append("ราคาเด้งลงจาก EMA 50 (bearish rejection)")
 
+                # RSI bounce confirmation: RSI crossing below 60
+                if rsi_prev is not None and rsi_val is not None:
+                    if rsi_prev > 60 and rsi_val <= 60:
+                        confidence += 0.10
+                        reasons.append(f"RSI rejection {rsi_prev:.1f}→{rsi_val:.1f} (cross 60)")
+
             if rsi_val is not None and 35 < rsi_val < 70:
                 confidence += 0.10
                 reasons.append(f"RSI {rsi_val:.1f} (ไม่ oversold)")
 
-            if confidence >= MIN_CONFIDENCE:
+            if confidence >= min_conf:
                 action = Action.SELL
 
         # --- ไม่ผ่าน threshold ---
         confidence = max(0.0, min(1.0, confidence))
 
-        if action == Action.HOLD or confidence < MIN_CONFIDENCE:
+        if action == Action.HOLD or confidence < min_conf:
             return self.create_hold(
                 symbol=symbol,
-                reason=f"Confidence {confidence:.2f} < {MIN_CONFIDENCE} | " + "; ".join(reasons) if reasons else "ไม่ใช่ trending market",
+                reason=f"Confidence {confidence:.2f} < {min_conf} | " + "; ".join(reasons) if reasons else "ไม่ใช่ trending market",
             )
 
         # --- Regime bonus ---
@@ -197,8 +243,12 @@ class TrendRiderStrategy(BaseStrategy):
             confidence = min(1.0, confidence + 0.05)
 
         # --- ATR-based SL/TP ---
-        sl_distance = atr_val * ATR_SL_MULT
-        tp_distance = sl_distance * RR_TARGET
+        default_sl_mult = _trend_sl_mult(symbol)
+        sl_mult = kwargs.get("sl_atr_mult", default_sl_mult)
+        rr_target = kwargs.get("rr_target", RR_TARGET)
+
+        sl_distance = atr_val * sl_mult
+        tp_distance = sl_distance * rr_target
 
         if action == Action.BUY:
             # SL ใต้ EMA 50 (swing support)
@@ -212,7 +262,7 @@ class TrendRiderStrategy(BaseStrategy):
         rr = (tp_distance / actual_sl_dist) if actual_sl_dist > 0 else 0
         reason_text = "; ".join(reasons)
 
-        logger.info("trend_rider_signal", extra={
+        logger.debug("trend_rider_signal", extra={
             "symbol": symbol, "action": action.value,
             "confidence": round(confidence, 3),
             "adx": round(adx_val, 1) if adx_val else None,

@@ -117,7 +117,16 @@ class ShadowRunner:
                 if candles is None or len(candles) < 30:
                     continue
 
-                decision: Decision = strategy.analyze(candles, profile, regime)
+                # Try standard signature first, fallback to legacy signature
+                try:
+                    decision = strategy.analyze(candles, profile, regime)
+                except TypeError:
+                    # Legacy strategies: analyze(df, symbol_str, **kwargs)
+                    decision = strategy.analyze(candles, profile.symbol)
+                
+                # Adapt older StrategyDecision/SniperSignal format to standard Decision model
+                if not isinstance(decision, Decision):
+                    decision = self.factory._adapt_sniper_signal(decision, profile)
 
                 if decision.action == Action.HOLD:
                     continue
@@ -164,7 +173,7 @@ class ShadowRunner:
 
             except Exception as e:
                 self._record_error(strat_name, cycle)
-                logger.debug("shadow_strategy_error", extra={
+                logger.warning("shadow_strategy_error", extra={
                     "strategy": strat_name,
                     "symbol": symbol,
                     "error": str(e),

@@ -1,0 +1,10 @@
+{
+  "total_trades": 10,
+  "wins": 5,
+  "losses": 5,
+  "win_rate": 50.0,
+  "profit_factor": 1.22,
+  "max_dd": 2.42,
+  "net_pnl": 9.23,
+  "final_equity": 1009.23
+}

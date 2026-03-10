@@ -24,24 +24,24 @@ logger = get_logger("CorrelationGuard")
 # ใช้ชื่อ MT5 suffix ทั้ง m (micro) และปกติ
 CORRELATION_MAP: dict[str, list[str]] = {
     # Precious Metals (correlation ~90%)
-    "XAUUSD":  ["XAGUSD", "XAUUSDm", "XAGUSDm"],
-    "XAUUSDm": ["XAGUSDm", "XAUUSD", "XAGUSD"],
-    "XAGUSD":  ["XAUUSD", "XAUUSDm", "XAGUSDm"],
-    "XAGUSDm": ["XAUUSDm", "XAUUSD", "XAGUSD"],
+    "XAUUSD":  ["XAGUSD", "XAUUSDc", "XAGUSDc"],
+    "XAUUSDc": ["XAGUSDc", "XAUUSD", "XAGUSD"],
+    "XAGUSD":  ["XAUUSD", "XAUUSDc", "XAGUSDc"],
+    "XAGUSDc": ["XAUUSDc", "XAUUSD", "XAGUSD"],
 
     # EUR Group (correlation ~85%)
-    "EURUSD":  ["GBPUSD", "EURUSDm", "GBPUSDm"],
-    "EURUSDm": ["GBPUSDm", "EURUSD", "GBPUSD"],
-    "GBPUSD":  ["EURUSD", "EURUSDm", "GBPUSDm"],
-    "GBPUSDm": ["EURUSDm", "EURUSD", "GBPUSD"],
+    "EURUSD":  ["GBPUSD", "EURUSDc", "GBPUSDc"],
+    "EURUSDc": ["GBPUSDc", "EURUSD", "GBPUSD"],
+    "GBPUSD":  ["EURUSD", "EURUSDc", "GBPUSDc"],
+    "GBPUSDc": ["EURUSDc", "EURUSD", "GBPUSD"],
 
     # JPY Group (inverse correlation ~80%)
-    "USDJPY":  ["USDJPYm"],
-    "USDJPYm": ["USDJPY"],
+    "USDJPY":  ["USDJPYc"],
+    "USDJPYc": ["USDJPY"],
 
     # Crypto
-    "BTCUSD":  ["BTCUSDm"],
-    "BTCUSDm": ["BTCUSD"],
+    "BTCUSD":  ["BTCUSDc"],
+    "BTCUSDc": ["BTCUSD"],
 }
 
 # ลด lot ลงเท่าไหร่ถ้ามี correlated position
@@ -133,6 +133,7 @@ def adjust_lot_for_correlation(
     symbol: str,
     lot_size: float,
     open_positions: list[dict],
+    min_lot: float = 0.01,
 ) -> tuple[float, str]:
     """
     ปรับ lot size ตาม correlation exposure.
@@ -141,6 +142,7 @@ def adjust_lot_for_correlation(
         symbol: symbol ที่จะเปิด
         lot_size: lot size เดิม
         open_positions: positions เปิดอยู่
+        min_lot: ขั้นต่ำของ lot size (internal standard lot)
 
     Returns:
         (adjusted_lot, reason_string)
@@ -150,14 +152,15 @@ def adjust_lot_for_correlation(
     if not result["has_correlation"]:
         return lot_size, ""
 
-    adjusted = round(lot_size * result["lot_multiplier"], 2)
-    adjusted = max(adjusted, 0.01)  # ไม่ต่ำกว่า min lot
+    adjusted = round(lot_size * result["lot_multiplier"], 5)
+    adjusted = max(adjusted, min_lot)  # ไม่ต่ำกว่า min lot ที่รับมา (เช่น 0.0001 สำหรับ Cent)
 
     logger.info("lot_adjusted_correlation", extra={
         "symbol": symbol,
         "original_lot": lot_size,
         "adjusted_lot": adjusted,
         "multiplier": result["lot_multiplier"],
+        "min_lot_used": min_lot,
     })
 
     return adjusted, result["reason"]

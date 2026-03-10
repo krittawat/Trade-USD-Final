@@ -1,46 +1,63 @@
 @echo off
+setlocal
 chcp 65001 >nul
-title Antigravity AI Trading System
+title Antigravity AI — LIVE MODE (All Strategies)
+color 0A
 
 echo ========================================
-echo  Antigravity AI Trading System
-echo  Starting All Services...
-echo ========================================
-
-:: --- Set root directory ---
-set "ROOT=%~dp0.."
-
-:: --- 1. Start Backend (Bot + API) ---
-echo.
-echo [1/2] Starting Backend...
-cd /d "%ROOT%\backend"
-start "Antigravity Bot" cmd /k "python run_bot.py"
-timeout /t 5 /nobreak >nul
-
-:: --- 2. Health Check ---
-echo [2/2] Checking health...
-timeout /t 3 /nobreak >nul
-powershell -Command "try { $r = Invoke-WebRequest -Uri 'http://localhost:8000/api/health' -UseBasicParsing -TimeoutSec 5; $j = $r.Content | ConvertFrom-Json; Write-Host ('  Status: ' + $j.status) -ForegroundColor Green; Write-Host ('  Mode:   ' + $j.mode) -ForegroundColor Green; Write-Host ('  MT5:    ' + $j.services.mt5) -ForegroundColor Green; Write-Host ('  Strats: ' + $j.strategies_registered) -ForegroundColor Green } catch { Write-Host '  API not ready yet - wait a moment' -ForegroundColor Yellow }"
-
-echo.
-echo ========================================
-echo  All Services Started!
-echo  API:       http://localhost:8000
-echo  Swagger:   http://localhost:8000/docs
-echo  Health:    http://localhost:8000/api/health
+echo   ANTIGRAVITY AI TRADING SYSTEM
+echo   MODE: *** LIVE ***  ALL STRATEGIES
 echo ========================================
 echo.
-echo  KILL SWITCH: Press any key to STOP all trading
-echo  (or call POST http://localhost:8000/api/kill-switch)
-echo ========================================
-pause >nul
-
-:: --- KILL SWITCH activated ---
+echo   Account: Exness CENT (USC)
+echo   Symbols: XAUUSDc, XAGUSDc, EURUSDc, USDJPYc, BTCUSDc
+echo   Shadow Mode: ENABLED (Learning in background)
 echo.
-echo  *** KILL SWITCH ACTIVATED ***
-powershell -Command "try { Invoke-WebRequest -Uri 'http://localhost:8000/api/kill-switch' -Method POST -UseBasicParsing -TimeoutSec 5 | Out-Null; Write-Host '  Kill-switch sent to API' -ForegroundColor Red } catch { Write-Host '  API not reachable' -ForegroundColor Yellow }"
-echo  Stopping all Python processes...
-taskkill /im python.exe /f >nul 2>&1
-echo  All stopped.
+echo   Risk Controls:
+echo     - Max 2%% per trade
+echo     - SL mandatory
+echo     - Capital floor 90%%
+echo     - Break-Even at +1R
+echo.
+echo ========================================
+echo.
+
+:: --- Set LIVE mode ---
+set TRADING_MODE=LIVE
+
+:: --- Kill existing processes on port 8000 ---
+echo [1/3] Clearing port 8000...
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr :8000 ^| findstr LISTENING') do (
+    taskkill /F /PID %%a >nul 2>&1
+)
+timeout /t 2 /nobreak >nul
+echo      Done.
+
+:: --- Start Backend ---
+echo.
+echo [2/3] Starting Backend (LIVE MODE)...
+cd /d "%~dp0..\backend"
+start "Antigravity LIVE" cmd /k "set TRADING_MODE=LIVE && cd /d %~dp0..\backend && python run_bot.py"
+
+:: --- Wait for backend ---
+echo      Waiting for backend startup...
+timeout /t 8 /nobreak >nul
+
+:: --- Health Check ---
+echo.
+echo [3/3] Health Check...
+powershell -Command "try { $r = Invoke-RestMethod -Uri 'http://localhost:8000/api/health' -TimeoutSec 5; Write-Host ('      Mode: ' + $r.mode) -ForegroundColor Green; Write-Host ('      MT5: ' + $r.mt5.status) -ForegroundColor Green; Write-Host ('      Strategies: ' + $r.strategies) -ForegroundColor Green } catch { Write-Host '      WARNING: Backend not responding yet' -ForegroundColor Yellow }"
+
+echo.
+echo ========================================
+echo   LIVE TRADING ACTIVE
+echo ========================================
+echo.
+echo   Dashboard: http://localhost:3000
+echo   API Docs:  http://localhost:8000/docs
+echo   Scoreboard: http://localhost:8000/api/shadow/scoreboard
+echo.
+echo   To STOP: Run kill_switch.bat
+echo   To check: http://localhost:8000/api/health
 echo.
 pause

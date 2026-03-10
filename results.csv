@@ -1,0 +1,26 @@
+﻿
+==================================================
+Evaluating FAST SCALPER XAUUSDc for 365 Days
+==================================================
+Downloaded 70821 candles.
+RAPID_ULTRA_FAST          | Trades: 12072 | WinRate:  44.5% | PnL Points:  -405.73
+RAPID_AGGRESSIVE_TP       | Trades: 5498 | WinRate:  34.4% | PnL Points:  1183.69
+RAPID_STANDARD            | Trades: 7889 | WinRate:  42.8% | PnL Points:  -609.18
+RAPID_SAFE_WIDE_SL        | Trades: 5090 | WinRate:  56.2% | PnL Points:  1088.04
+RAPID_TIGHT_SL_WIDE_TP    | Trades: 7981 | WinRate:  25.6% | PnL Points:   597.12
+RAPID_LONG_RSI            | Trades: 7943 | WinRate:  42.7% | PnL Points:  -871.52
+--------------------------------------------------
+BEST SCRIPT FOR XAUUSDc: RAPID_AGGRESSIVE_TP -> 1183.69 Points (WR: 34.4%)
+
+==================================================
+Evaluating FAST SCALPER XAGUSDc for 365 Days
+==================================================
+Downloaded 70702 candles.
+RAPID_ULTRA_FAST          | Trades: 12438 | WinRate:  43.7% | PnL Points:     9.30
+RAPID_AGGRESSIVE_TP       | Trades: 5784 | WinRate:  33.0% | PnL Points:    -6.49
+RAPID_STANDARD            | Trades: 8364 | WinRate:  42.1% | PnL Points:   -11.21
+RAPID_SAFE_WIDE_SL        | Trades: 5182 | WinRate:  54.7% | PnL Points:     5.55
+RAPID_TIGHT_SL_WIDE_TP    | Trades: 8544 | WinRate:  23.8% | PnL Points:   -26.17
+RAPID_LONG_RSI            | Trades: 8423 | WinRate:  42.1% | PnL Points:   -10.83
+--------------------------------------------------
+BEST SCRIPT FOR XAGUSDc: RAPID_ULTRA_FAST -> 9.30 Points (WR: 43.7%)

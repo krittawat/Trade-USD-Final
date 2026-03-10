@@ -3,7 +3,7 @@ Health Route — ตรวจสุขภาพระบบทั้งหมด
 
 แสดง:
     - mode: LIVE / DRY_RUN / REPLAY / BACKTEST
-    - สถานะ MT5, QuestDB, SQLite, DuckDB (real checks)
+    - สถานะ MT5, SQLite, DuckDB (real checks)
     - account info, uptime, version
     - brain status + strategies registered
 
@@ -13,8 +13,9 @@ Endpoints:
 """
 
 from datetime import datetime, timezone
+import asyncio
 
-import httpx
+# httpx removed — no more QuestDB HTTP ping needed
 
 from fastapi import APIRouter, Request
 
@@ -27,14 +28,14 @@ router = APIRouter()
 _start_time = datetime.now(timezone.utc)
 
 
-@router.get("/health")
+@router.get("")
 async def health_check(request: Request):
     """
     ตรวจสุขภาพระบบจริง — Dashboard ใช้ endpoint นี้.
 
     ตรวจ:
         - MT5: connected / disconnected (+ account info)
-        - QuestDB: HTTP ping
+        - Ticks: via SQLite (ไม่ต้อง QuestDB แล้ว)
         - SQLite: file exists + SELECT 1
         - DuckDB: SELECT 1
         - Brain: connected / disconnected
@@ -43,35 +44,51 @@ async def health_check(request: Request):
     settings = get_settings()
 
     # ─── MT5 check ───
+    # ─── MT5 check ───
     mt5_status = "disconnected"
     account_info = {}
+    master_loop = getattr(request.app.state, "master_loop", None)
+    
     try:
-        import MetaTrader5 as mt5
-        term = mt5.terminal_info()
-        if term and term.connected:
+        # Check MT5 underlying connection via client if possible, or just use adapter state
+        mt5 = getattr(request.app.state, "mt5", None)
+        if mt5 and await asyncio.to_thread(mt5.is_connected):
             mt5_status = "connected"
-            info = mt5.account_info()
-            if info:
-                account_info = {
-                    "login": info.login,
-                    "server": info.server,
-                    "balance": info.balance,
-                    "equity": info.equity,
-                    "margin": info.margin,
-                    "free_margin": info.margin_free,
-                    "open_positions": len(mt5.positions_get() or []),
-                }
+        
+        # Get Account Info from Adapter (Uniform for Live/Dry)
+        if master_loop and hasattr(master_loop, "adapter") and master_loop.adapter:
+            # If adapter allows basic account check
+             acct = await asyncio.to_thread(master_loop.adapter.get_account_state)
+             account_info = {
+                 "balance": acct.balance,
+                 "equity": acct.equity,
+                 "margin": acct.margin,
+                 "free_margin": acct.free_margin,
+                 "open_positions": acct.open_positions,
+                 "mode": settings.trading_mode
+             }
+        elif mt5 and await asyncio.to_thread(mt5.is_connected):
+             # Fallback
+             try:
+                 info = await asyncio.to_thread(mt5.account_info)
+                 if info:
+                    positions = await asyncio.to_thread(mt5.positions_get)
+                    account_info = {
+                        "login": info.login,
+                        "server": info.server,
+                        "balance": info.balance,
+                        "equity": info.equity,
+                        "margin": info.margin,
+                        "free_margin": info.margin_free,
+                        "open_positions": len(positions or []),
+                    }
+             except Exception:
+                 pass
+
     except Exception:
         mt5_status = "error"
 
-    # ─── QuestDB check ───
-    qdb_status = "disconnected"
-    try:
-        async with httpx.AsyncClient(timeout=2.0) as client:
-            r = await client.get(f"http://{settings.questdb_host}:{settings.questdb_http_port}")
-            qdb_status = "connected" if r.status_code == 200 else "error"
-    except Exception:
-        qdb_status = "disconnected"
+    # ─── QuestDB removed — tick storage via SQLite ───
 
     # ─── SQLite check ───
     sqlite_status = "connected"
@@ -80,9 +97,9 @@ async def health_check(request: Request):
         import os
         db_path = settings.sqlite_db_path
         if os.path.exists(db_path):
-            conn = sqlite3.connect(db_path)
-            conn.execute("SELECT 1")
-            conn.close()
+            conn = await asyncio.to_thread(sqlite3.connect, db_path, check_same_thread=False)
+            await asyncio.to_thread(conn.execute, "SELECT 1")
+            await asyncio.to_thread(conn.close)
         else:
             sqlite_status = "no_file"
     except Exception:
@@ -131,7 +148,6 @@ async def health_check(request: Request):
         "uptime_seconds": round(uptime, 1),
         "services": {
             "mt5": mt5_status,
-            "questdb": qdb_status,
             "sqlite": sqlite_status,
             "duckdb": duckdb_status,
             "brain": brain_status,
