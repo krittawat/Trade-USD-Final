@@ -14,9 +14,11 @@ import json
 from pathlib import Path
 from typing import Dict, Any
 
+from backend.trader.config.paths import BRAIN_DB_PATH
+
 logger = logging.getLogger("opus_logger")
 
-DB_PATH = Path("d:/VibeCode/Trade/backend/data/sqlite/brain.db")
+DB_PATH = Path(BRAIN_DB_PATH)
 
 class FractionalKellySizer:
     def __init__(self, db_path: Path = DB_PATH):

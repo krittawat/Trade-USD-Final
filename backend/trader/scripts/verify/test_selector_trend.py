@@ -43,7 +43,7 @@ def test_selector_trend_gate():
         'signal_counter_trend', 'signal_smc_metals', 'signal_btc_whale', 'signal_fvg_logic',
         'signal_momentum_rider', 'signal_antigravity_alpha', 'signal_antigravity_alpha_v6',
         'signal_alpha_v6_smc', 'signal_micro_scalper', 'signal_gold_elite', 'signal_usoil_momentum',
-        'signal_momentum_scalper_v2', 'signal_btc_mean_rev', 'signal_btc_stop_hunt_v2',
+        'signal_momentum_scalper_v2', 'signal_rapid_pullback', 'signal_btc_mean_rev', 'signal_btc_stop_hunt_v2',
         'signal_btc_elite_v2', 'signal_btc_oracle', 'signal_aether_flow', 'signal_indices_ultimate',
         'signal_liquidity_hunter', 'signal_correlation_sniper', 'signal_usoil_elite', 'signal_ai_brain',
         'signal_indicator_confluence'

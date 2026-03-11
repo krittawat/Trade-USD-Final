@@ -1,0 +1,211 @@
+  [MT5] Connected. Fetching 30 days for XAUUSDm (M5)...
+  [DATA] Loaded 6053 bars from MT5 for XAUUSDm (M5)
+  [MT5] symbol details for XAUUSDm: spread=396 point=0.001 tick_size=0.001
+  [WARN] MT5 spread 396pts is off-session inflated -> capped to 50pts
+
+============================================================
+  OPUS Backtest V2 - XAUUSD
+  Bars: 6053 | Lookback: 100 | Hold: 50
+  Timeframe: M5 | Strategy: rapid_pullback
+  Initial Equity: $1000.00
+  Spread sim: 50 points
+============================================================
+
+  Computing features on full dataset...
+  Features computed. Starting walk-forward...
+
+[2m16:21:48[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:21:48[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:21:48[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:21:48[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:21:48[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:21:48[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:21:48[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:21:48[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:21:48[0m [97mBRAIN [XAUUSD] Deep Brain loaded from models using model: XAUUSDm[0m
+[2m16:21:48[0m [97mConnected to MT5 successfully.[0m
+[2m16:21:56[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:21:56[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:21:56[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:21:56[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:21:56[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:21:56[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:21:56[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:04[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:04[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:04[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:04[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:04[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:04[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:10[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:22:10[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:22:10[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:22:10[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:22:10[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:22:10[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:22:10[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:22:10[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:22:10[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:22:10[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:22:10[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:22:10[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:22:10[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:10[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:10[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:10[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:10[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:16[0m [97m🧠 AI ENGINE APPROVED: RAPID_PULLBACK | ML Probability: 71.5% | RR=1.40 | Score=0.604 | VolR=1.6 OBV=▲[0m
+[2m16:22:16[0m [97m  💰 CAPITAL: Bal=$0.00 Eq=$1000.00 Free=$0.00[0m
+[2m16:22:19[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:22:19[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:30[0m [97m🚫 [PRO GUARD] RAPID_PULLBACK XAUUSD blocked: Asia session for metals requires >= 0.80 confidence[0m
+[2m16:22:33[0m [97m🧠 AI ENGINE APPROVED: RAPID_PULLBACK | ML Probability: 71.5% | RR=1.40 | Score=0.604 | VolR=1.5 OBV=▼[0m
+[2m16:22:33[0m [97m  💰 CAPITAL: Bal=$0.00 Eq=$983.41 Free=$0.00[0m
+[2m16:22:34[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:22:34[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:34[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:34[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:34[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:34[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:34[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:34[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:34[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:36[0m [97m🚫 [PRO GUARD] RAPID_PULLBACK XAUUSD blocked: Asia session for metals requires >= 0.80 confidence[0m
+[2m16:22:42[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:42[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:42[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:42[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:42[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:52[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:52[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:52[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:52[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:52[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:52[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:52[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:52[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:52[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:52[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:52[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:52[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:58[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:58[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:59[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:59[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:22:59[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:23:08[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:23:08[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:23:08[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:23:08[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:23:08[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:23:08[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:23:08[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:23:08[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:23:08[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:23:08[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:23:08[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:23:08[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:23:08[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:23:08[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:23:08[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:23:08[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:23:14[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:23:14[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:23:14[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:23:14[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:23:14[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:23:14[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:23:14[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:23:24[0m [97m🧠 AI ENGINE APPROVED: RAPID_PULLBACK | ML Probability: 71.5% | RR=1.40 | Score=0.604 | VolR=1.4 OBV=▼[0m
+[2m16:23:24[0m [97m  💰 CAPITAL: Bal=$0.00 Eq=$973.27 Free=$0.00[0m
+[2m16:23:36[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:23:36[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:23:36[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:23:36[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:23:36[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:23:36[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:23:36[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:23:44[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:23:44[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:23:44[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:23:45[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:23:47[0m [97m🚫 [PRO GUARD] RAPID_PULLBACK XAUUSD blocked: Asia session for metals requires >= 0.80 confidence[0m
+[2m16:23:56[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:23:56[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:23:56[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:23:56[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:08[0m [97m🧠 AI ENGINE APPROVED: RAPID_PULLBACK | ML Probability: 68.5% | RR=1.40 | Score=0.601 | VolR=1.7 OBV=▼[0m
+[2m16:24:08[0m [97m  💰 CAPITAL: Bal=$0.00 Eq=$965.66 Free=$0.00[0m
+[2m16:24:08[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:24:08[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:24:08[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:24:08[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:09[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:09[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:09[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:09[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:09[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:09[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:09[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:09[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:09[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:09[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:11[0m [97m🚫 [PRO GUARD] RAPID_PULLBACK XAUUSD blocked: Asia session for metals requires >= 0.80 confidence[0m
+[2m16:24:16[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:24:16[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:24:16[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:24:17[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:17[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:17[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:17[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:17[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:17[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:17[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:17[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:17[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:17[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:17[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:25[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:24:25[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:24:33[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:33[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:33[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:43[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:24:43[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:24:43[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:24:43[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:24:43[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:24:43[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m16:24:43[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:43[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:43[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:43[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:43[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:43[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:43[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:43[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m16:24:43[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+
+============================================================
+  BACKTEST RESULTS - XAUUSD
+============================================================
+  Total Signals Generated : 4
+  Signals Blocked by Risk : 0
+  Trades Executed         : 4
+  Win Rate                : 25.0%
+  Profit Factor           : 1.32
+  Max Drawdown            : 3.43%
+  Net P&L                 : $10.8317
+  Final Equity            : $1010.8317
+============================================================
+
+  [ANALYSIS] Per-Model Breakdown:
+    [RAPID_PULLBACK] Trades=4 | WR=25.0% | PF=1.32 | Net=$10.8317
+
+  Last 10 trades:
+    [LOSS] Bar 1090: BUY RAPID_PULLBACK [Strong Trend (U] | PnL=$-16.5925 | Conf=0.63
+    [LOSS] Bar 1690: SELL RAPID_PULLBACK [Volatility Expa] | PnL=$-10.1400 | Conf=0.63
+    [LOSS] Bar 3543: SELL RAPID_PULLBACK [Strong Trend (D] | PnL=$-7.6041 | Conf=0.63
+    [WIN] Bar 4728: SELL RAPID_PULLBACK [Volatility Expa] | PnL=$45.1683 | Conf=0.63
+
+  [FILE] Results saved to d:/VibeCode/Trade/backend/trader/data/backtest_XAUUSD_rapid_pullback_M5_30d_20260311_162446.json

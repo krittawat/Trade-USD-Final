@@ -20,10 +20,14 @@ from typing import Dict
 import numpy as np
 import pandas as pd
 
+from backend.trader.config.paths import SETTINGS_PATH
+
 logger = logging.getLogger("indicator_confluence")
 
-with open("d:/VibeCode/Trade/backend/trader/config/settings.json") as _f:
+with open(SETTINGS_PATH, encoding="utf-8") as _f:
     _STRATEGY_CFG = json.load(_f).get("strategy", {})
+
+_IC_CFG = _STRATEGY_CFG.get("indicator_confluence", {})
 
 
 _BASE_PARAMS: Dict[str, object] = {
@@ -45,7 +49,15 @@ _BASE_PARAMS: Dict[str, object] = {
     "require_trend_regime": True,
     "allowed_timeframes": ["M5", "M12", "M15", "H1"],
 }
-_BASE_PARAMS.update(_STRATEGY_CFG.get("indicator_confluence", {}))
+for _k, _v in _IC_CFG.items():
+    if _k in {"market_presets", "symbol_presets", "session_presets", "symbol_session_presets"}:
+        continue
+    _BASE_PARAMS[_k] = _v
+
+_MARKET_PRESETS: Dict[str, Dict[str, object]] = _IC_CFG.get("market_presets", {}) or {}
+_SYMBOL_PRESETS: Dict[str, Dict[str, object]] = _IC_CFG.get("symbol_presets", {}) or {}
+_SESSION_PRESETS: Dict[str, Dict[str, object]] = _IC_CFG.get("session_presets", {}) or {}
+_SYMBOL_SESSION_PRESETS: Dict[str, Dict[str, Dict[str, object]]] = _IC_CFG.get("symbol_session_presets", {}) or {}
 
 
 # Symbol-level tuning. Keys are substring matches on broker symbol.
@@ -180,6 +192,43 @@ _SYMBOL_TUNING: Dict[str, Dict[str, object]] = {
 }
 
 
+def _normalize_symbol(symbol: str) -> str:
+    sym = str(symbol or "").upper().strip()
+    if sym.endswith(("M", "C")):
+        sym = sym[:-1]
+    return sym
+
+
+def _match_symbol_key(symbol: str, mapping: dict) -> str | None:
+    std = _normalize_symbol(symbol)
+    for key in mapping:
+        probe = _normalize_symbol(str(key))
+        if probe and probe in std:
+            return str(key)
+    return None
+
+
+def _market_family(symbol: str) -> str:
+    s = _normalize_symbol(symbol)
+    if "BTC" in s:
+        return "crypto"
+    if "XAU" in s or "XAG" in s:
+        return "metals"
+    if "OIL" in s:
+        return "oil"
+    if "US30" in s or "USTEC" in s or "NAS" in s or "SPX" in s:
+        return "indices"
+    return "forex"
+
+
+def _session_tokens(session_label: str) -> list[str]:
+    s = str(session_label or "").upper().strip()
+    if not s:
+        return []
+    parts = [p.strip() for p in s.split("/") if p.strip()]
+    return parts
+
+
 def _safe_float(value, fallback: float = 0.0) -> float:
     try:
         v = float(value)
@@ -193,18 +242,51 @@ def _safe_float(value, fallback: float = 0.0) -> float:
 def _resolve_params(symbol: str, context: dict) -> dict:
     params = dict(_BASE_PARAMS)
     symbol_upper = str(symbol).upper()
-    params["profile"] = "DEFAULT"
+    profile_bits = ["DEFAULT"]
 
-    for key, overrides in _SYMBOL_TUNING.items():
-        if key in symbol_upper:
-            params.update(overrides)
-            params["profile"] = key
-            break
+    family = _market_family(symbol_upper)
+    market_overrides = _MARKET_PRESETS.get(family)
+    if isinstance(market_overrides, dict):
+        params.update(market_overrides)
+        profile_bits.append(f"MARKET:{family}")
+
+    preset_key = _match_symbol_key(symbol_upper, _SYMBOL_PRESETS)
+    if preset_key:
+        symbol_overrides = _SYMBOL_PRESETS.get(preset_key, {})
+        if isinstance(symbol_overrides, dict):
+            params.update(symbol_overrides)
+            profile_bits.append(f"PRESET:{preset_key}")
+    else:
+        for key, overrides in _SYMBOL_TUNING.items():
+            if key in symbol_upper:
+                params.update(overrides)
+                profile_bits.append(f"TUNING:{key}")
+                break
+
+    sess = str(context.get("session") or context.get("current_session") or "")
+    for sess_key in _session_tokens(sess):
+        sess_overrides = _SESSION_PRESETS.get(sess_key)
+        if isinstance(sess_overrides, dict):
+            params.update(sess_overrides)
+            profile_bits.append(f"SESSION:{sess_key}")
+
+    symbol_session_key = _match_symbol_key(symbol_upper, _SYMBOL_SESSION_PRESETS)
+    if symbol_session_key:
+        symbol_sess_cfg = _SYMBOL_SESSION_PRESETS.get(symbol_session_key, {})
+        if isinstance(symbol_sess_cfg, dict):
+            for sess_key in _session_tokens(sess):
+                sess_overrides = symbol_sess_cfg.get(sess_key)
+                if isinstance(sess_overrides, dict):
+                    params.update(sess_overrides)
+                    profile_bits.append(f"SYM_SESSION:{symbol_session_key}:{sess_key}")
 
     # Optional dynamic overrides from brain bridge
     brain_params = (context.get("brain_params") or {}).get("indicator_confluence")
     if isinstance(brain_params, dict):
         params.update(brain_params)
+        profile_bits.append("BRAIN")
+
+    params["profile"] = "|".join(profile_bits)
 
     return params
 

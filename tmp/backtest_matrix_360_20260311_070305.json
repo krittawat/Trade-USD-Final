@@ -1,0 +1,125 @@
+{
+  "generated_at": "2026-03-11T07:03:05.448068+00:00",
+  "run_id": "bt360_20260311_070143_456494",
+  "engine": "trader",
+  "days": 30,
+  "requested_equity": 300.0,
+  "effective_equity": 1000.0,
+  "optimize_equity_floor": 1000.0,
+  "lookback": 100,
+  "hold_bars": 50,
+  "min_trades": 1,
+  "max_bars_per_run": 1200,
+  "production_filters": {
+    "min_trades": 3,
+    "min_win_rate": 35.0,
+    "min_pf": 1.05,
+    "max_dd": 25.0,
+    "min_score": 0.0,
+    "require_positive_pnl": true
+  },
+  "timeframes": [
+    "M5",
+    "M15"
+  ],
+  "symbols": [
+    "US30"
+  ],
+  "best_by_symbol": {
+    "US30": {
+      "total_trades": 1,
+      "wins": 1,
+      "losses": 0,
+      "win_rate": 100.0,
+      "profit_factor": 395989300000.0,
+      "max_dd": 0.0,
+      "net_pnl": 395.9893,
+      "final_equity": 1395.9893,
+      "symbol": "US30",
+      "timeframe": "M5",
+      "engine": "trader",
+      "bars_used": 1200,
+      "bars_raw": 6032,
+      "truncated": true,
+      "score": 206.256,
+      "rank": 1,
+      "production_eligible": false
+    }
+  },
+  "ranked_rows": [
+    {
+      "total_trades": 1,
+      "wins": 1,
+      "losses": 0,
+      "win_rate": 100.0,
+      "profit_factor": 395989300000.0,
+      "max_dd": 0.0,
+      "net_pnl": 395.9893,
+      "final_equity": 1395.9893,
+      "symbol": "US30",
+      "timeframe": "M5",
+      "engine": "trader",
+      "bars_used": 1200,
+      "bars_raw": 6032,
+      "truncated": true,
+      "score": 206.256,
+      "rank": 1,
+      "production_eligible": false
+    },
+    {
+      "total_trades": 1,
+      "wins": 1,
+      "losses": 0,
+      "win_rate": 100.0,
+      "profit_factor": 242217900000.0,
+      "max_dd": 0.0,
+      "net_pnl": 242.2179,
+      "final_equity": 1242.2179,
+      "symbol": "US30",
+      "timeframe": "M15",
+      "engine": "trader",
+      "bars_used": 1200,
+      "bars_raw": 2012,
+      "truncated": true,
+      "score": 138.1572,
+      "rank": 2,
+      "production_eligible": false
+    }
+  ],
+  "rows_all_engines": [
+    {
+      "total_trades": 1,
+      "wins": 1,
+      "losses": 0,
+      "win_rate": 100.0,
+      "profit_factor": 395989300000.0,
+      "max_dd": 0.0,
+      "net_pnl": 395.9893,
+      "final_equity": 1395.9893,
+      "symbol": "US30",
+      "timeframe": "M5",
+      "engine": "trader",
+      "bars_used": 1200,
+      "bars_raw": 6032,
+      "truncated": true,
+      "score": 206.256
+    },
+    {
+      "total_trades": 1,
+      "wins": 1,
+      "losses": 0,
+      "win_rate": 100.0,
+      "profit_factor": 242217900000.0,
+      "max_dd": 0.0,
+      "net_pnl": 242.2179,
+      "final_equity": 1242.2179,
+      "symbol": "US30",
+      "timeframe": "M15",
+      "engine": "trader",
+      "bars_used": 1200,
+      "bars_raw": 2012,
+      "truncated": true,
+      "score": 138.1572
+    }
+  ]
+}

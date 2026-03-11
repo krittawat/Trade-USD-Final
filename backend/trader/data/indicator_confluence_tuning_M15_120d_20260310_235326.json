@@ -1,0 +1,21 @@
+[
+  {
+    "symbol": "XAUUSD",
+    "timeframe": "M15",
+    "days": 120,
+    "min_score": 7,
+    "mom_delta": 0.12,
+    "momentum_buy_min": 100.12,
+    "momentum_sell_max": 99.88,
+    "sl_atr_mult": 1.7,
+    "tp_rr": 2.0,
+    "trades": 880,
+    "wins": 308,
+    "losses": 572,
+    "win_rate": 35.0,
+    "profit_factor": 0.958,
+    "net_r": -24.935,
+    "avg_r": -0.0283,
+    "max_dd_r": 91.424,
+    "score": -181.625,
+    "baseline": 

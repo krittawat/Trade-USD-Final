@@ -45,21 +45,65 @@ def compute_candle_metrics(df: pd.DataFrame) -> pd.DataFrame:
     
     return df
 
-def compute_volume_features(df: pd.DataFrame, lookback: int = 20, spike_mult: float = 2.0, dryup_mult: float = 0.5) -> pd.DataFrame:
+def compute_volume_features(
+    df: pd.DataFrame,
+    lookback: int = 20,
+    spike_mult: float = 2.0,
+    dryup_mult: float = 0.5,
+) -> pd.DataFrame:
     """
     Tick Volume Intelligence:
-    - vol_avg: Rolling average volume
-    - vol_ratio: Current volume / average (>1 = above avg)
-    - vol_spike: True when volume > spike_mult * average (confirms sweep/displacement)
-    - vol_dryup: True when volume < dryup_mult * average (pre-breakout compression)
+    - tick_vol_avg / tick_vol_ratio: short-term participation
+    - tick_vol_avg_slow / tick_vol_ratio_slow: slower benchmark for entry quality
+    - buy_pressure / sell_pressure: where price closes within the candle range
+    - volume_side: dominant direction behind the current candle
+    - volume_climax: very large participation but weak body (exhaustion risk)
+    - vol_* aliases remain for backward compatibility with existing strategies
     """
     if 'tick_volume' not in df.columns:
         return df
 
-    df['vol_avg'] = df['tick_volume'].rolling(lookback).mean()
-    df['vol_ratio'] = df['tick_volume'] / df['vol_avg'].replace(0, 1)
-    df['vol_spike'] = df['vol_ratio'] > spike_mult
-    df['vol_dryup'] = df['vol_ratio'] < dryup_mult
+    short_lookback = max(2, int(lookback))
+    slow_lookback = max(20, short_lookback * 2)
+
+    df['tick_vol_avg'] = df['tick_volume'].rolling(short_lookback).mean()
+    df['tick_vol_ratio'] = df['tick_volume'] / df['tick_vol_avg'].replace(0, 1)
+    df['tick_vol_avg_slow'] = df['tick_volume'].rolling(slow_lookback).mean()
+    df['tick_vol_ratio_slow'] = df['tick_volume'] / df['tick_vol_avg_slow'].replace(0, 1)
+
+    # Backward-compatible aliases used across the strategy set.
+    df['vol_avg'] = df['tick_vol_avg']
+    df['vol_ratio'] = df['tick_vol_ratio']
+    df['vol_spike'] = df['tick_vol_ratio'] > spike_mult
+    df['vol_dryup'] = df['tick_vol_ratio'] < dryup_mult
+
+    candle_range = (df['high'] - df['low']).replace(0, np.nan)
+    df['buy_pressure'] = ((df['close'] - df['low']) / candle_range).clip(0.0, 1.0).fillna(0.5)
+    df['sell_pressure'] = ((df['high'] - df['close']) / candle_range).clip(0.0, 1.0).fillna(0.5)
+    df['volume_energy'] = (df['tick_vol_ratio_slow'].clip(lower=0.0) * df['body_ratio'].fillna(0.0)).fillna(0.0)
+    df['volume_climax'] = (
+        (df['tick_vol_ratio_slow'] >= 2.5) &
+        (df['body_ratio'].fillna(0.0) <= 0.35)
+    )
+
+    vol_side = np.where(
+        (df['close'] > df['open']) & (df['buy_pressure'] >= 0.55),
+        "BUY",
+        np.where(
+            (df['close'] < df['open']) & (df['sell_pressure'] >= 0.55),
+            "SELL",
+            np.where(
+                (df['buy_pressure'] - df['sell_pressure']) >= 0.15,
+                "BUY",
+                np.where(
+                    (df['sell_pressure'] - df['buy_pressure']) >= 0.15,
+                    "SELL",
+                    "NEUTRAL",
+                ),
+            ),
+        ),
+    )
+    df['volume_side'] = pd.Series(vol_side, index=df.index)
     return df
 
 def compute_bull_bear_power(

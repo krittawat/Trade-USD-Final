@@ -10,6 +10,7 @@ $ROOT = Split-Path -Parent $MyInvocation.MyCommand.Path
 $TRADER_DIR = Join-Path $ROOT "backend\trader"
 $VENV_PY = Join-Path $ROOT ".venv\Scripts\python.exe"
 $env:PYTHONPATH = Join-Path $ROOT "backend"
+$env:PYTHONUNBUFFERED = "1"
 
 Write-Host "Stopping existing Python trader processes..." -ForegroundColor Yellow
 
@@ -18,7 +19,8 @@ Get-CimInstance Win32_Process |
     Where-Object {
         $_.Name -eq "python.exe" -and (
             $_.CommandLine -match "backend\.trader\.main" -or
-            $_.CommandLine -match "backend[\\/]+trader[\\/]+main\.py"
+            $_.CommandLine -match "backend[\\/]+trader[\\/]+main\.py" -or
+            $_.CommandLine -match "main\.py.+--mode live"
         )
     } |
     ForEach-Object {
@@ -35,4 +37,5 @@ if (Test-Path $VENV_PY) {
 }
 
 Set-Location $TRADER_DIR
-& $PYTHON_BIN "main.py" --mode live
+Write-Host "Logs will stream in this window." -ForegroundColor Cyan
+& $PYTHON_BIN "-u" "main.py" --mode live --use-backtest-overrides

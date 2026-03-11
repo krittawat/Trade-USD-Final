@@ -8,11 +8,13 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 
+from backend.trader.config.paths import SETTINGS_PATH
+
 logger = logging.getLogger("opus_logger")
 
 # Load OPUS governor config for RR check
 import json as _json_mod
-with open("d:/VibeCode/Trade/backend/trader/config/settings.json") as _gf:
+with open(SETTINGS_PATH, encoding="utf-8") as _gf:
     _OPUS_CFG = _json_mod.load(_gf).get("opus_governor", {})
 
 # Module-level cooldown tracker: {symbol: datetime_unlock}
@@ -20,12 +22,15 @@ _cooldown_until: dict = {}
 
 
 class RiskEngine:
-    def __init__(self, config_path: str = "d:/VibeCode/Trade/backend/trader/config/settings.json"):
-        with open(config_path, 'r') as f:
-            self.config = json.load(f).get("risk_limits", {})
+    def __init__(self, config_path=SETTINGS_PATH):
+        with open(config_path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        self.config = (payload or {}).get("risk_limits", {})
+        self.strategy_config = (payload or {}).get("strategy", {})
         self.atr_cooldown_threshold = self.config.get("atr_deviation_cooldown_threshold", 2.2)
         self.cooldown_minutes = self.config.get("cooldown_minutes", 60)
         self.min_equity_by_symbol = self.config.get("min_equity_by_symbol", {}) or {}
+        self.tick_volume_config = (self.strategy_config or {}).get("tick_volume_gate", {}) or {}
         # Backward compatibility for older config: keep XAU dedicated key if present.
         if "XAUUSD" not in self.min_equity_by_symbol:
             legacy_xau_min = float(self.config.get("xau_min_equity_threshold", 150.0) or 150.0)
@@ -75,6 +80,7 @@ class RiskEngine:
 
         reasons = []
         allowed = True
+        backtest_mode = bool(market_state.get("backtest_mode", False))
 
         # 💰 [USER RULE] ด่าน 0: บันทึกค่าเงินก่อนเทรด (Capital Monitor)
         logger.info(
@@ -108,7 +114,7 @@ class RiskEngine:
             allowed = False
 
         # 👑 [INSTITUTIONAL] Strict XAU Limitation: Max 1 position
-        if "XAU" in symbol.upper():
+        if (not backtest_mode) and "XAU" in symbol.upper():
             # Check current open positions for XAU
             import MetaTrader5 as mt5
             positions = mt5.positions_get(symbol=symbol)
@@ -195,7 +201,7 @@ class RiskEngine:
         is_monday_morning = now_th.weekday() == 0 and 4 <= now_th.hour < 8
         effective_max_spread = sym_spread
         
-        if is_monday_morning:
+        if (not backtest_mode) and is_monday_morning:
             effective_max_spread = sym_spread * 0.8
             logger.info(f"🛡️ Monday Open Guard: Using tighter spread limit {effective_max_spread} for {symbol}")
 
@@ -206,14 +212,15 @@ class RiskEngine:
             self._trigger_cooldown(symbol, f"Spread spike {current_spread} > {effective_max_spread}")
 
         # 👑 [USER RULE] XAU Advisory for Monday
-        if is_monday_morning and "XAU" in symbol.upper():
+        if (not backtest_mode) and is_monday_morning and "XAU" in symbol.upper():
             logger.info(f"⚠️ High Sensitivity: XAU position monitoring active for Monday Open.")
 
         # 6. News filter (Institutional + Manual Override)
-        from backend.trader.services.news_filter import news_filter
-        if not news_filter.is_safe(symbol) or market_state.get("is_news", False):
-            reasons.append("BLOCKED: Trading inside ±30-min HIGH-impact news window.")
-            allowed = False
+        if not backtest_mode:
+            from backend.trader.services.news_filter import news_filter
+            if not news_filter.is_safe(symbol) or market_state.get("is_news", False):
+                reasons.append("BLOCKED: Trading inside ±30-min HIGH-impact news window.")
+                allowed = False
 
         # 6.5 Market Volume Filter (Tiered)
         min_vol_ratio = self.config.get("min_volume_ratio", 0.8)
@@ -227,6 +234,47 @@ class RiskEngine:
         elif current_vol_ratio < min_vol_ratio:
             vol_warning = True
             reasons.append(f"ADVISORY: Low Volatility (Vol Ratio {current_vol_ratio:.2f}) - Reduced Lot Mode")
+
+        # 6.6 Tick Volume Entry Gate (institutional participation)
+        tv_cfg = self.tick_volume_config or {}
+        has_tick_volume_ctx = any(
+            key in market_state for key in ("tick_vol_ratio", "tick_volume_side", "tick_volume_climax")
+        )
+        if bool(tv_cfg.get("enabled", False)) and has_tick_volume_ctx:
+            model = str(signal.get("model", "")).upper()
+            side = str(signal.get("side", "")).upper()
+            strict_models = [str(m).upper() for m in tv_cfg.get("strict_entry_models", []) if str(m).strip()]
+            allow_low_volume_models = {
+                str(m).upper() for m in tv_cfg.get("allow_low_volume_models", []) if str(m).strip()
+            }
+            strict_entry = (model in strict_models) if strict_models else (model not in allow_low_volume_models)
+
+            tv_ratio = market_state.get("tick_vol_ratio", current_vol_ratio)
+            try:
+                tv_ratio = float(tv_ratio)
+            except Exception:
+                tv_ratio = current_vol_ratio
+
+            entry_ratio_min = float(tv_cfg.get("entry_ratio_min", 1.15))
+            if strict_entry and tv_ratio < entry_ratio_min:
+                reasons.append(
+                    f"BLOCKED: Tick Volume {tv_ratio:.2f}x below entry gate "
+                    f"{entry_ratio_min:.2f}x"
+                )
+                allowed = False
+
+            if bool(market_state.get("tick_volume_climax", False)):
+                reasons.append(f"BLOCKED: Tick Volume climax/exhaustion ({tv_ratio:.2f}x)")
+                allowed = False
+
+            volume_side = str(market_state.get("tick_volume_side", "NEUTRAL")).upper()
+            opposite_block_ratio = float(tv_cfg.get("opposite_block_ratio", 1.35))
+            if side in {"BUY", "SELL"} and volume_side in {"BUY", "SELL"} and volume_side != side and tv_ratio >= opposite_block_ratio:
+                reasons.append(
+                    f"BLOCKED: Tick Volume pressure {volume_side} opposes {side} "
+                    f"({tv_ratio:.2f}x)"
+                )
+                allowed = False
 
         # 7. ATR Deviation Cooldown (V2)
         cooldown_ok, cooldown_reason = self._check_volatility_cooldown(signal, market_state)

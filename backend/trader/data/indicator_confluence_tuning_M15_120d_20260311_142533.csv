@@ -1,0 +1,2 @@
+symbol,timeframe,days,min_score,momentum_buy_min,momentum_sell_max,sl_atr_mult,tp_rr,trades,win_rate,profit_factor,net_r,max_dd_r,score,score_delta_vs_base,net_r_delta_vs_base
+XAUUSD,M15,120,7,100.12,99.88,1.7,2.0,878,34.74,0.946,-32.015,91.424,-204.3085,0.0,0.0

@@ -3,6 +3,10 @@
         "max_risk_per_trade_percent": 0.5,
         "max_daily_loss_percent": 10.0,
         "max_daily_loss_currency": 12.0,
+        "hard_risk_per_trade_pct": 0.3,
+        "hard_max_open_risk_pct": 1.0,
+        "hard_margin_util_after_pct": 25.0,
+        "hard_min_free_margin_pct": 70.0,
         "max_consecutive_losses": 3,
         "daily_target_currency": 60.0,
         "vault_target_currency": 18.0,
@@ -15,6 +19,25 @@
             "US30": 300,
             "USTEC": 500
         },
+        "max_sl_distance_abs": {
+            "XAGUSD": 0.90
+        },
+        "max_sl_atr_multiplier": {
+            "XAUUSD": 1.8,
+            "XAGUSD": 1.8,
+            "BTCUSD": 2.0,
+            "USOIL": 1.8,
+            "US30": 1.8,
+            "USTEC": 1.8
+        },
+        "min_sl_atr_multiplier": {
+            "XAUUSD": 1.0,
+            "XAGUSD": 1.1,
+            "BTCUSD": 1.2,
+            "USOIL": 1.0,
+            "US30": 1.0,
+            "USTEC": 1.0
+        },
 
         "min_volume_ratio": 0.8,
         "min_volume_ratio_hard": 0.4,
@@ -22,14 +45,15 @@
         "cooldown_minutes": 15,
         "min_equity_threshold": 10.0,
         "min_equity_by_symbol": {
-            "XAUUSD": 120.0
+            "XAUUSD": 120.0,
+            "XAGUSD": 400.0
         },
         "max_daily_trades_crypto": 5,
         "max_positions_per_symbol": {
             "BTCUSD": 3,
             "USOIL": 3,
-            "XAUUSD": 3,
-            "XAGUSD": 3,
+            "XAUUSD": 1,
+            "XAGUSD": 1,
             "US30": 3,
             "USTEC": 3
         }
@@ -70,6 +94,43 @@
         "GBPUSD": "GBPUSDm",
         "USDJPY": "USDJPYm"
     },
+    "runtime": {
+        "lock_live_to_xau_only": false,
+        "live_symbols_override": [
+            "XAUUSD",
+            "BTCUSD",
+            "USOIL",
+            "US30",
+            "USTEC"
+        ],
+        "live_shadow_symbols_override": [
+            "XAGUSD"
+        ],
+        "block_opposite_side_same_symbol_live": true,
+        "backtest_tf_overrides": {
+            "min_trades": 20,
+            "min_win_rate": 45.0,
+            "min_profit_factor": 1.2,
+            "max_drawdown_pct": 15.0,
+            "search_completed_runs": 30,
+            "require_positive_score": true,
+            "require_positive_pnl": true,
+            "disabled_symbols": [
+                "XAUUSD",
+                "BTCUSD",
+                "USOIL",
+                "US30",
+                "USTEC"
+            ],
+            "pinned_symbol_timeframes": {
+                "XAUUSD": ["M15", "H1"],
+                "BTCUSD": ["M15", "H1"],
+                "USOIL": ["M15", "H1"],
+                "US30": ["M15", "H1"],
+                "USTEC": ["M15", "H1"]
+            }
+        }
+    },
 
     "strategy": {
         "enable_trend_killer": false,
@@ -89,6 +150,7 @@
         "enable_smc_metals": true,
         "enable_ai_brain": true,
         "enable_momentum_scalper": false,
+        "enable_rapid_pullback": true,
         "enable_btc_mean_rev": false,
         "enable_btc_stop_hunt": false,
         "enable_btc_elite": false,
@@ -96,15 +158,65 @@
         "enable_btc_oracle": false,
         "enable_fvg_logic": true,
         "enable_aether_flow": true,
-        "enable_indicator_confluence": true,
+        "enable_indicator_confluence": false,
         "enable_indices_ultimate": false,
         "min_confidence_trade": 0.75,
         "min_liquidity_event_score": 0.80,
+        "tick_volume_gate": {
+            "enabled": true,
+            "entry_ratio_min": 1.15,
+            "strong_ratio_min": 1.6,
+            "opposite_block_ratio": 1.35,
+            "climax_ratio": 2.8,
+            "climax_max_body_ratio": 0.35,
+            "min_directional_pressure": 0.57,
+            "alignment_boost": 0.04,
+            "strong_alignment_boost": 0.07,
+            "counter_signal_penalty": 0.05,
+            "low_volume_penalty": 0.06,
+            "allow_low_volume_models": [
+                "COUNTER_TREND",
+                "BTC_MEAN_REV"
+            ],
+            "strict_entry_models": []
+        },
         "trade_cooldown_bars": 6,
         "sl_atr_multiplier": 1.2,
         "tp1_risk_multiplier": 1.5,
         "tp2_risk_multiplier": 2.5,
         "tp3_risk_multiplier": 2.0,
+        "trailing_stop": {
+            "enabled": true,
+            "atr_multiplier": 2.5,
+            "ghost_buffer_pct": 0.2,
+            "break_even_activation_r": 0.8,
+            "break_even_buffer_r": 0.08,
+            "atr_trail_activation_r": 1.4,
+            "aggressive_atr_multiplier": 1.5,
+            "recovery_drawdown_pct": 12.0,
+            "recovery_break_even_activation_r": 0.2,
+            "recovery_atr_trail_activation_r": 0.8,
+            "xau_monday_break_even_activation_r": 0.6,
+            "min_sl_move": 0.5,
+            "lock_tiers": [
+                {
+                    "trigger_r": 1.0,
+                    "lock_r_multiple": 0.05
+                },
+                {
+                    "trigger_r": 1.5,
+                    "lock_r_multiple": 0.5
+                },
+                {
+                    "trigger_r": 2.0,
+                    "lock_r_multiple": 1.0
+                },
+                {
+                    "trigger_r": 3.0,
+                    "lock_r_multiple": 1.8
+                }
+            ]
+        },
         "pyramid": {
             "enabled": true,
             "min_confidence": 0.70,
@@ -129,9 +241,304 @@
             "sl_atr_mult": 1.2,
             "tp_rr": 1.8,
             "min_score": 6,
-            "min_volume_ratio": 1.0
+            "min_volume_ratio": 1.0,
+            "rsi_buy_min": 50.0,
+            "rsi_buy_max": 68.0,
+            "rsi_sell_min": 32.0,
+            "rsi_sell_max": 50.0,
+            "momentum_buy_min": 100.05,
+            "momentum_sell_max": 99.95,
+            "min_sl_pct": 0.0007,
+            "min_atr_pct": 0.00035,
+            "require_trend_regime": true,
+            "allowed_timeframes": [
+                "M5",
+                "M12",
+                "M15",
+                "H1"
+            ],
+            "market_presets": {
+                "metals": {
+                    "sl_atr_mult": 1.5,
+                    "tp_rr": 1.9,
+                    "min_score": 6,
+                    "min_volume_ratio": 1.05,
+                    "rsi_buy_min": 52.0,
+                    "rsi_buy_max": 70.0,
+                    "rsi_sell_min": 30.0,
+                    "rsi_sell_max": 48.0,
+                    "momentum_buy_min": 100.1,
+                    "momentum_sell_max": 99.9,
+                    "min_sl_pct": 0.001,
+                    "min_atr_pct": 0.0006
+                },
+                "crypto": {
+                    "sl_atr_mult": 2.2,
+                    "tp_rr": 2.2,
+                    "min_score": 7,
+                    "min_volume_ratio": 1.1,
+                    "rsi_buy_min": 53.0,
+                    "rsi_buy_max": 72.0,
+                    "rsi_sell_min": 28.0,
+                    "rsi_sell_max": 47.0,
+                    "momentum_buy_min": 100.25,
+                    "momentum_sell_max": 99.75,
+                    "min_sl_pct": 0.002,
+                    "min_atr_pct": 0.0012
+                }
+            },
+            "symbol_presets": {
+                "XAUUSD": {
+                    "min_score": 7,
+                    "momentum_buy_min": 100.12,
+                    "momentum_sell_max": 99.88,
+                    "sl_atr_mult": 1.7,
+                    "tp_rr": 2.0,
+                    "allowed_timeframes": [
+                        "M5",
+                        "M15",
+                        "H1"
+                    ]
+                },
+                "BTCUSD": {
+                    "min_score": 8,
+                    "momentum_buy_min": 100.3,
+                    "momentum_sell_max": 99.7,
+                    "sl_atr_mult": 2.3,
+                    "tp_rr": 2.3,
+                    "allowed_timeframes": [
+                        "M5",
+                        "M15",
+                        "H1"
+                    ]
+                }
+            },
+            "session_presets": {
+                "ASIA": {
+                    "min_score": 7,
+                    "min_volume_ratio": 1.1,
+                    "allowed_timeframes": [
+                        "M15",
+                        "H1"
+                    ]
+                },
+                "LONDON": {
+                    "min_score": 6,
+                    "min_volume_ratio": 1.0
+                },
+                "NY": {
+                    "min_score": 7,
+                    "min_volume_ratio": 1.05
+                }
+            },
+            "symbol_session_presets": {
+                "XAUUSD": {
+                    "LONDON": {
+                        "min_score": 6,
+                        "sl_atr_mult": 1.6,
+                        "tp_rr": 1.9,
+                        "momentum_buy_min": 100.1,
+                        "momentum_sell_max": 99.9,
+                        "min_volume_ratio": 1.02
+                    },
+                    "NY": {
+                        "min_score": 7,
+                        "sl_atr_mult": 1.8,
+                        "tp_rr": 2.1,
+                        "momentum_buy_min": 100.14,
+                        "momentum_sell_max": 99.86,
+                        "min_volume_ratio": 1.08
+                    }
+                },
+                "BTCUSD": {
+                    "LONDON": {
+                        "min_score": 8,
+                        "sl_atr_mult": 2.2,
+                        "tp_rr": 1.9,
+                        "momentum_buy_min": 100.28,
+                        "momentum_sell_max": 99.72,
+                        "min_volume_ratio": 1.1
+                    },
+                    "NY": {
+                        "min_score": 9,
+                        "sl_atr_mult": 2.5,
+                        "tp_rr": 2.0,
+                        "momentum_buy_min": 100.35,
+                        "momentum_sell_max": 99.65,
+                        "min_volume_ratio": 1.15
+                    }
+                }
+            }
         },
-        "allow_counter_trend_critical": true
+        "rapid_pullback": {
+            "allowed_symbols": [
+                "XAUUSD",
+                "BTCUSD",
+                "USOIL"
+            ],
+            "allowed_timeframes": [
+                "M5",
+                "M15"
+            ],
+            "defaults": {
+                "lookback": 6,
+                "touch_atr": 0.32,
+                "sl_buffer_atr": 0.28,
+                "min_sl_atr": 0.9,
+                "max_sl_atr": 1.9,
+                "tp1_rr": 1.55,
+                "tp2_rr": 2.15,
+                "tp3_rr": 2.9,
+                "min_body_ratio": 0.36,
+                "min_vol_ratio": 0.95,
+                "min_roc": 0.02,
+                "min_di_gap": 1.5,
+                "min_rsi_buy": 51.0,
+                "max_rsi_buy": 74.0,
+                "min_rsi_sell": 26.0,
+                "max_rsi_sell": 49.0
+            },
+            "market_presets": {
+                "XAUUSD": {
+                    "touch_atr": 0.28,
+                    "sl_buffer_atr": 0.24,
+                    "min_sl_atr": 0.65,
+                    "max_sl_atr": 2.4,
+                    "tp1_rr": 1.45,
+                    "tp2_rr": 2.0,
+                    "tp3_rr": 2.6,
+                    "min_roc": 0.03,
+                    "min_di_gap": 1.8,
+                    "min_vol_ratio": 0.98
+                },
+                "BTCUSD": {
+                    "lookback": 5,
+                    "touch_atr": 0.5,
+                    "sl_buffer_atr": 0.4,
+                    "min_sl_atr": 1.25,
+                    "max_sl_atr": 2.4,
+                    "tp1_rr": 1.9,
+                    "tp2_rr": 2.7,
+                    "tp3_rr": 3.6,
+                    "min_body_ratio": 0.42,
+                    "min_vol_ratio": 1.02,
+                    "min_roc": 0.06,
+                    "min_di_gap": 2.5,
+                    "min_rsi_buy": 52.0,
+                    "max_rsi_buy": 70.0,
+                    "min_rsi_sell": 30.0,
+                    "max_rsi_sell": 48.0
+                },
+                "USOIL": {
+                    "lookback": 6,
+                    "touch_atr": 0.38,
+                    "sl_buffer_atr": 0.28,
+                    "min_sl_atr": 0.75,
+                    "max_sl_atr": 2.4,
+                    "tp1_rr": 1.6,
+                    "tp2_rr": 2.2,
+                    "tp3_rr": 3.0,
+                    "min_body_ratio": 0.40,
+                    "min_vol_ratio": 1.0,
+                    "min_roc": 0.04,
+                    "min_di_gap": 2.0
+                }
+            },
+            "timeframe_presets": {
+                "M5": {
+                    "lookback": 5,
+                    "touch_atr": 0.3,
+                    "min_body_ratio": 0.40,
+                    "min_vol_ratio": 1.0,
+                    "min_roc": 0.03
+                },
+                "M15": {
+                    "lookback": 7,
+                    "touch_atr": 0.36,
+                    "sl_buffer_atr": 0.3,
+                    "min_body_ratio": 0.34,
+                    "min_vol_ratio": 0.95,
+                    "min_roc": 0.03
+                }
+            },
+            "symbol_timeframe_presets": {
+                "XAUUSD": {
+                    "M5": {
+                        "lookback": 4,
+                        "touch_atr": 0.26,
+                        "sl_buffer_atr": 0.2,
+                        "min_vol_ratio": 1.08,
+                        "tp1_rr": 1.4,
+                        "tp2_rr": 1.95,
+                        "tp3_rr": 2.5
+                    },
+                    "M15": {
+                        "lookback": 7,
+                        "touch_atr": 0.34,
+                        "sl_buffer_atr": 0.32,
+                        "tp1_rr": 1.6,
+                        "tp2_rr": 2.25,
+                        "tp3_rr": 3.0
+                    }
+                },
+                "BTCUSD": {
+                    "M5": {
+                        "touch_atr": 0.55,
+                        "min_vol_ratio": 1.04,
+                        "min_roc": 0.08,
+                        "tp1_rr": 2.0,
+                        "tp2_rr": 2.8
+                    },
+                    "M15": {
+                        "lookback": 6,
+                        "touch_atr": 0.48,
+                        "sl_buffer_atr": 0.42,
+                        "min_vol_ratio": 1.0,
+                        "min_roc": 0.06,
+                        "tp1_rr": 1.85,
+                        "tp2_rr": 2.6
+                    }
+                },
+                "USOIL": {
+                    "M5": {
+                        "lookback": 4,
+                        "touch_atr": 0.36,
+                        "min_vol_ratio": 1.02,
+                        "min_roc": 0.05,
+                        "tp1_rr": 1.55,
+                        "tp2_rr": 2.1
+                    },
+                    "M15": {
+                        "lookback": 8,
+                        "touch_atr": 0.42,
+                        "sl_buffer_atr": 0.34,
+                        "min_vol_ratio": 1.0,
+                        "min_roc": 0.05,
+                        "tp1_rr": 1.7,
+                        "tp2_rr": 2.35
+                    }
+                }
+            }
+        },
+        "professional_guard": {
+            "enabled": true,
+            "live_lookback_days": 30,
+            "live_min_trades": 4,
+            "shadow_lookback_trades": 12,
+            "shadow_min_trades": 6,
+            "cold_live_max_win_rate": 0.42,
+            "cold_live_max_profit_factor": 0.95,
+            "hot_live_min_win_rate": 0.57,
+            "hot_live_min_profit_factor": 1.2,
+            "shadow_cold_max_win_rate": 0.35,
+            "elite_bypass_confidence": 0.84,
+            "elite_bypass_rr": 1.8,
+            "live_hot_confidence_boost": 0.03,
+            "shadow_cold_confidence_penalty": 0.04,
+            "asia_nonprime_min_confidence": 0.8,
+            "sleep_nonprime_min_confidence": 0.86
+        },
+        "allow_counter_trend_critical": false
     },
     "opus_governor": {
         "margin_reduce_threshold": 100,

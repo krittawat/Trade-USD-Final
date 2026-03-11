@@ -1,0 +1,92 @@
+{
+  "generated_at": "2026-03-11T09:52:58.824992+00:00",
+  "run_id": "bt360_20260311_094908_876013",
+  "engine": "trader",
+  "strategy": "rapid_pullback",
+  "days": 30,
+  "requested_equity": 300.0,
+  "effective_equity": 1000.0,
+  "optimize_equity_floor": 1000.0,
+  "lookback": 100,
+  "hold_bars": 50,
+  "min_trades": 1,
+  "max_bars_per_run": 0,
+  "production_filters": {
+    "min_trades": 3,
+    "min_win_rate": 35.0,
+    "min_pf": 1.05,
+    "max_dd": 25.0,
+    "min_score": 0.0,
+    "require_positive_pnl": true
+  },
+  "timeframes": [
+    "M5"
+  ],
+  "symbols": [
+    "XAUUSD"
+  ],
+  "best_by_symbol": {
+    "XAUUSD": {
+      "total_trades": 6,
+      "wins": 2,
+      "losses": 4,
+      "win_rate": 33.3,
+      "profit_factor": 1.57,
+      "max_dd": 2.67,
+      "net_pnl": 22.9593,
+      "final_equity": 1022.9593,
+      "symbol": "XAUUSD",
+      "timeframe": "M5",
+      "engine": "trader",
+      "strategy": "rapid_pullback",
+      "bars_used": 6053,
+      "bars_raw": 6053,
+      "truncated": false,
+      "score": 36.808,
+      "rank": 1,
+      "production_eligible": false
+    }
+  },
+  "ranked_rows": [
+    {
+      "total_trades": 6,
+      "wins": 2,
+      "losses": 4,
+      "win_rate": 33.3,
+      "profit_factor": 1.57,
+      "max_dd": 2.67,
+      "net_pnl": 22.9593,
+      "final_equity": 1022.9593,
+      "symbol": "XAUUSD",
+      "timeframe": "M5",
+      "engine": "trader",
+      "strategy": "rapid_pullback",
+      "bars_used": 6053,
+      "bars_raw": 6053,
+      "truncated": false,
+      "score": 36.808,
+      "rank": 1,
+      "production_eligible": false
+    }
+  ],
+  "rows_all_engines": [
+    {
+      "total_trades": 6,
+      "wins": 2,
+      "losses": 4,
+      "win_rate": 33.3,
+      "profit_factor": 1.57,
+      "max_dd": 2.67,
+      "net_pnl": 22.9593,
+      "final_equity": 1022.9593,
+      "symbol": "XAUUSD",
+      "timeframe": "M5",
+      "engine": "trader",
+      "strategy": "rapid_pullback",
+      "bars_used": 6053,
+      "bars_raw": 6053,
+      "truncated": false,
+      "score": 36.808
+    }
+  ]
+}

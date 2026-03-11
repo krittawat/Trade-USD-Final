@@ -23,9 +23,19 @@ from backend.trader.regime.classifier import classify_regime
 from backend.trader.liquidity.detector import detect_liquidity_events
 from backend.trader.strategy.selector import select_and_generate_signal, reset_cooldown
 from backend.trader.risk.gate import risk_engine, _cooldown_until
+from backend.trader.risk.mt5_history import (
+    combined_realized_and_floating_pnl,
+    get_closed_trade_summary,
+    is_currency_loss_breached,
+    remaining_additional_loss_budget,
+    utc_day_start,
+    utc_now,
+)
 from backend.trader.risk.opus_governor import governor
 from backend.trader.execution.mt5_order import Executor
+from backend.trader.execution.terminal_guard import log_trade_block
 from backend.trader.execution.position_manager import manage_open_positions
+from backend.trader.config.paths import SETTINGS_PATH
 from backend.trader.observability.logger import setup_logger, C
 from backend.trader.storage.sqlite_db import db
 from backend.trader.notification.telegram import notify_trade_signal
@@ -35,6 +45,7 @@ from backend.trader.brain.symbol_tuner import symbol_tuner
 from backend.trader.features.smt_divergence import smt_tracker
 from backend.trader.data.time_utils import time_utils
 from backend.trader.services.maintenance import MaintenanceScheduler
+from backend.trader.services.live_cycle import handle_safety_pause, run_live_position_management
 from backend.trader.brain.brain_bridge import brain_bridge
 from backend.trader.risk.sizing import sizer  # [NEW] Dynamic Sizing Engine
 
@@ -42,11 +53,11 @@ from backend.trader.risk.sizing import sizer  # [NEW] Dynamic Sizing Engine
 logger = logging.getLogger("opus_logger")
 
 import json as _json
-with open("d:/VibeCode/Trade/backend/trader/config/settings.json") as _f:
+with open(SETTINGS_PATH, encoding="utf-8") as _f:
     _SETTINGS = _json.load(_f)
 
 CONFIG = {
-    # Focus universe for production growth: XAU, BTC, USOIL, USTEC, US30
+    # Focus universe for production growth: keep XAG in shadow until equity is above $400.
     "symbols": ["XAUUSDm", "BTCUSDm", "USOILm", "US30m", "USTECm"],
     "shadow_symbols": ["XAGUSDm"],
     "timeframes": ["M3", "M5", "M6", "M12", "M15", "M30", "H1", "H2", "H4", "D1"],
@@ -72,6 +83,9 @@ CONFIG = {
         "max_lot": 0.01
     }
 }
+DEFAULT_SYMBOLS = deepcopy(CONFIG.get("symbols", []))
+DEFAULT_SHADOW_SYMBOLS = deepcopy(CONFIG.get("shadow_symbols", []))
+DEFAULT_SYMBOL_TIMEFRAMES = deepcopy(CONFIG.get("symbol_timeframes", {}))
 DEFAULT_EXECUTION_TIMEFRAMES = deepcopy(CONFIG.get("execution_timeframes", {}))
 
 
@@ -97,12 +111,11 @@ SYM_ICON = {"XAUUSD": "🥇", "XAGUSD": "🥈", "BTCUSD": "₿ ", "BTCUSDm": "�
 SYM_COLOR = {"XAUUSD": C.YELLOW, "XAGUSD": C.CYAN, "BTCUSD": C.MAGENTA, "BTCUSDm": C.MAGENTA, "USOIL": C.BLUE, "USOILm": C.BLUE, "XAUUSDm": C.YELLOW, "XAGUSDm": C.CYAN, "US30m": C.GREEN, "USTECm": C.BLUE}
 
 # Track PnL and deals for the entire CALENDAR DAY (00:00 UTC)
-APP_START_TIME = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-SESSION_START_TIME = datetime.now()
+SESSION_START_TIME = utc_now()
 
 def set_app_start_time():
     global SESSION_START_TIME
-    SESSION_START_TIME = datetime.now()
+    SESSION_START_TIME = utc_now()
 
 def _sym(symbol: str) -> str:
     icon = SYM_ICON.get(symbol, "")
@@ -142,31 +155,31 @@ def parse_args():
     parser.add_argument(
         "--override-min-trades",
         type=int,
-        default=3,
+        default=None,
         help="Minimum trades filter when applying backtest TF overrides",
     )
     parser.add_argument(
         "--override-min-win-rate",
         type=float,
-        default=35.0,
+        default=None,
         help="Minimum win rate (%%) filter when applying backtest TF overrides",
     )
     parser.add_argument(
         "--override-min-pf",
         type=float,
-        default=1.05,
+        default=None,
         help="Minimum profit factor filter when applying backtest TF overrides",
     )
     parser.add_argument(
         "--override-max-dd",
         type=float,
-        default=25.0,
+        default=None,
         help="Maximum drawdown (%%) filter when applying backtest TF overrides",
     )
     parser.add_argument(
         "--override-search-completed-runs",
         type=int,
-        default=30,
+        default=None,
         help="How many recent COMPLETED backtest runs to scan for usable TF overrides",
     )
     parser.add_argument(
@@ -186,7 +199,7 @@ def parse_args():
         "--override-require-positive-pnl",
         dest="override_require_positive_pnl",
         action="store_true",
-        default=True,
+        default=None,
         help="Require net_pnl > 0 when selecting TF overrides",
     )
     parser.add_argument(
@@ -198,25 +211,152 @@ def parse_args():
     return parser.parse_args()
 
 
+def _resolve_broker_symbol_name(symbol: str) -> str:
+    sym = str(symbol or "").strip()
+    if not sym:
+        return sym
+    sym_map = (_SETTINGS.get("symbols", {}) or {})
+    probe = sym.upper()
+    return str(sym_map.get(probe, sym))
+
+
+def _normalize_symbol_list(raw_symbols) -> list:
+    out = []
+    seen = set()
+    for s in raw_symbols or []:
+        mapped = _resolve_broker_symbol_name(s)
+        if not mapped:
+            continue
+        key = mapped.upper()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(mapped)
+    return out
+
+
+def _filter_tf_map(tf_map: dict, symbols: list) -> dict:
+    if not isinstance(tf_map, dict):
+        return {}
+    wanted = {str(s) for s in symbols}
+    return {k: deepcopy(v) for k, v in tf_map.items() if k in wanted}
+
+
+def _apply_runtime_live_symbol_overrides(mode: str) -> None:
+    if str(mode).lower() != "live":
+        return
+
+    runtime_cfg = (_SETTINGS.get("runtime", {}) or {})
+    lock_xau_only = bool(runtime_cfg.get("lock_live_to_xau_only", False))
+    live_symbols_override = _normalize_symbol_list(runtime_cfg.get("live_symbols_override", []))
+    live_shadow_override = runtime_cfg.get("live_shadow_symbols_override")
+
+    selected_symbols = []
+    if lock_xau_only:
+        selected_symbols = _normalize_symbol_list(["XAUUSD"])
+    elif live_symbols_override:
+        selected_symbols = live_symbols_override
+
+    if selected_symbols:
+        CONFIG["symbols"] = selected_symbols
+        CONFIG["symbol_timeframes"] = _filter_tf_map(DEFAULT_SYMBOL_TIMEFRAMES, selected_symbols)
+        CONFIG["execution_timeframes"] = _filter_tf_map(DEFAULT_EXECUTION_TIMEFRAMES, selected_symbols)
+
+        for sym in selected_symbols:
+            CONFIG["symbol_timeframes"].setdefault(sym, deepcopy(CONFIG["timeframes"]))
+            CONFIG["execution_timeframes"].setdefault(sym, ["M5", "M15", "H1"])
+
+        logger.warning(f"🧭 [RUNTIME] LIVE symbols active: {', '.join(CONFIG['symbols'])}")
+
+    if isinstance(live_shadow_override, list):
+        CONFIG["shadow_symbols"] = _normalize_symbol_list(live_shadow_override)
+    elif lock_xau_only:
+        CONFIG["shadow_symbols"] = []
+
+    if lock_xau_only:
+        logger.warning("🧭 [RUNTIME] lock_live_to_xau_only=true -> trade XAUUSD only")
+
+
 def _resolve_override_toggle(args) -> bool:
     if args.use_backtest_overrides is not None:
         return bool(args.use_backtest_overrides)
     return args.mode in {"live", "dry_run"}
 
 
+def _get_backtest_override_runtime_cfg() -> dict:
+    runtime_cfg = (_SETTINGS.get("runtime", {}) or {})
+    cfg = runtime_cfg.get("backtest_tf_overrides", {}) or {}
+    return cfg if isinstance(cfg, dict) else {}
+
+
+def _resolve_override_number(arg_value, cfg_key: str, default_value):
+    if arg_value is not None:
+        return arg_value
+    cfg = _get_backtest_override_runtime_cfg()
+    value = cfg.get(cfg_key, default_value)
+    return default_value if value is None else value
+
+
 def _resolve_override_require_positive_score(args) -> bool:
     if args.override_require_positive_score is not None:
         return bool(args.override_require_positive_score)
-    return True
+    cfg = _get_backtest_override_runtime_cfg()
+    return bool(cfg.get("require_positive_score", True))
+
+
+def _resolve_override_require_positive_pnl(args) -> bool:
+    if args.override_require_positive_pnl is not None:
+        return bool(args.override_require_positive_pnl)
+    cfg = _get_backtest_override_runtime_cfg()
+    return bool(cfg.get("require_positive_pnl", True))
+
+
+def _normalize_timeframe_list(raw_timeframes) -> list[str]:
+    out = []
+    seen = set()
+    for tf in raw_timeframes or []:
+        token = str(tf or "").upper().strip()
+        if not token or token not in TIMEFRAME_MAP or token in seen:
+            continue
+        seen.add(token)
+        out.append(token)
+    return out
+
+
+def _resolve_pinned_symbol_timeframes() -> dict[str, list[str]]:
+    cfg = _get_backtest_override_runtime_cfg()
+    raw_pins = cfg.get("pinned_symbol_timeframes", {}) or {}
+    if not isinstance(raw_pins, dict):
+        return {}
+
+    resolved: dict[str, list[str]] = {}
+    for raw_symbol, raw_timeframes in raw_pins.items():
+        broker_symbol = _resolve_broker_symbol_name(raw_symbol)
+        timeframes = _normalize_timeframe_list(raw_timeframes)
+        if not broker_symbol or not timeframes:
+            continue
+        resolved[broker_symbol] = timeframes
+    return resolved
+
+
+def _resolve_disabled_override_symbols() -> set[str]:
+    cfg = _get_backtest_override_runtime_cfg()
+    raw_symbols = cfg.get("disabled_symbols", []) or []
+    resolved: set[str] = set()
+    for raw_symbol in raw_symbols:
+        broker_symbol = _resolve_broker_symbol_name(raw_symbol)
+        if broker_symbol:
+            resolved.add(broker_symbol)
+    return resolved
 
 
 def _apply_backtest_tf_overrides(
     *,
     enabled: bool,
-    min_trades: int = 3,
-    min_win_rate: float = 35.0,
-    min_pf: float = 1.05,
-    max_dd: float = 25.0,
+    min_trades: int = 20,
+    min_win_rate: float = 45.0,
+    min_pf: float = 1.20,
+    max_dd: float = 15.0,
     require_positive_pnl: bool = True,
     search_completed_runs: int = 30,
     require_positive_score: bool = True,
@@ -224,6 +364,7 @@ def _apply_backtest_tf_overrides(
     from backend.trader.data.mapper import mapper
 
     CONFIG["execution_timeframes"] = deepcopy(DEFAULT_EXECUTION_TIMEFRAMES)
+    disabled_symbols = _resolve_disabled_override_symbols()
 
     if not enabled:
         logger.info("  📚 Backtest TF overrides: disabled (using default execution_timeframes)")
@@ -249,7 +390,13 @@ def _apply_backtest_tf_overrides(
 
     overridden = []
     fallback = []
+    disabled = []
     for broker_symbol, default_tfs in DEFAULT_EXECUTION_TIMEFRAMES.items():
+        if broker_symbol in disabled_symbols:
+            CONFIG["execution_timeframes"][broker_symbol] = list(default_tfs)
+            disabled.append((broker_symbol, list(default_tfs)))
+            continue
+
         std_symbol = mapper.to_standard(broker_symbol).upper()
         symbol_keys = [std_symbol, broker_symbol.upper()]
         if std_symbol.endswith("M"):
@@ -278,7 +425,7 @@ def _apply_backtest_tf_overrides(
 
     logger.info(
         f"  📚 Backtest TF overrides run={run_meta.get('run_id')} "
-        f"engine={run_meta.get('engine')} overridden={len(overridden)} fallback={len(fallback)}"
+        f"engine={run_meta.get('engine')} overridden={len(overridden)} fallback={len(fallback)} disabled={len(disabled)}"
         f"{f' checked={checked_runs}' if checked_runs else ''}"
         f" filters[min_trades={max(0, int(min_trades))},wr>={max(0.0, float(min_win_rate)):.1f},"
         f"pf>={max(0.0, float(min_pf)):.2f},dd<={max(0.0, float(max_dd)):.1f},"
@@ -291,25 +438,40 @@ def _apply_backtest_tf_overrides(
         logger.info(f"    ✅ {sym} -> {','.join(tfs)} ({src})")
     for sym, tfs in fallback:
         logger.info(f"    ↩ {sym} -> {','.join(tfs)} (default)")
+    for sym, tfs in disabled:
+        logger.info(f"    ⛔ {sym} -> {','.join(tfs)} (DB override disabled in config)")
 
-def get_real_account_state(mt5_module, start_time: datetime = APP_START_TIME) -> dict:
+
+def _apply_pinned_execution_timeframes() -> None:
+    pinned = _resolve_pinned_symbol_timeframes()
+    if not pinned:
+        return
+
+    active_symbols = set(CONFIG["symbols"]) | set(CONFIG.get("shadow_symbols", []))
+    for broker_symbol, timeframes in pinned.items():
+        CONFIG["execution_timeframes"][broker_symbol] = list(timeframes)
+        status = "ACTIVE" if broker_symbol in active_symbols else "INACTIVE"
+        logger.info(
+            f"  📌 Pinned TF override [{status}] {broker_symbol} -> {','.join(timeframes)}"
+        )
+
+def get_real_account_state(mt5_module, start_time: datetime | None = None, end_time: datetime | None = None) -> dict:
     info = mt5_module.account_info()
     if info is None:
         return {"equity": 0, "daily_pnl": 0, "consecutive_losses": 0, "margin_level": 0, "balance": 0, "margin_free": 0}
 
-    deals = mt5_module.history_deals_get(start_time, datetime.now(timezone.utc))
-    pnl = 0.0
-    consecutive_losses = 0
-    if deals:
-        for d in deals:
-            if d.entry == 1 and d.type in (0, 1):
-                pnl += d.profit
-                if d.profit < 0: consecutive_losses += 1
-                else: consecutive_losses = 0
+    summary = get_closed_trade_summary(
+        mt5_module,
+        start_time if start_time is not None else utc_day_start(),
+        end_time=end_time,
+    )
+    pnl = summary["realized_pnl"]
+    consecutive_losses = summary["consecutive_losses"]
     return {
         "equity": info.equity, "balance": info.balance, "daily_pnl": pnl,
-        "real_daily_pnl": pnl, 
-        "consecutive_losses": consecutive_losses, 
+        "real_daily_pnl": pnl,
+        "consecutive_losses": consecutive_losses,
+        "closed_deal_count": summary["closed_deal_count"],
         "margin": info.margin,
         "margin_free": info.margin_free,
         "margin_level": info.margin_level if info.margin_level else 9999,
@@ -337,6 +499,61 @@ def compute_lot_size(equity: float, risk_pct: float, sl_distance: float,
     lot = math.floor(raw_lot / volume_step) * volume_step
     return max(volume_min, round(lot, 2))
 
+
+def _round_down_to_step(value: float, step: float) -> float:
+    if step <= 0:
+        return max(0.0, value)
+    if value <= 0:
+        return 0.0
+    return max(0.0, math.floor(value / step) * step)
+
+
+def _estimate_order_risk_usd(*, entry: float, sl: float, lot: float, tick_value: float, tick_size: float) -> float:
+    if entry <= 0 or sl <= 0 or lot <= 0 or tick_value <= 0 or tick_size <= 0:
+        return 0.0
+    sl_distance = abs(entry - sl)
+    if sl_distance <= 0:
+        return 0.0
+    ticks_at_risk = sl_distance / tick_size
+    return max(0.0, ticks_at_risk * tick_value * lot)
+
+
+def _estimate_open_portfolio_risk_usd(mt5_module) -> float:
+    total_risk = 0.0
+    positions = mt5_module.positions_get() or []
+    for pos in positions:
+        sl = _safe_float(getattr(pos, "sl", 0.0), 0.0)
+        entry = _safe_float(getattr(pos, "price_open", 0.0), 0.0)
+        volume = _safe_float(getattr(pos, "volume", 0.0), 0.0)
+        if sl <= 0 or entry <= 0 or volume <= 0:
+            continue
+
+        sym_info = mt5_module.symbol_info(getattr(pos, "symbol", ""))
+        if sym_info is None:
+            continue
+
+        tick_size = _safe_float(getattr(sym_info, "trade_tick_size", 0.0), 0.0)
+        tick_value = _safe_float(getattr(sym_info, "trade_tick_value", 0.0), 0.0)
+        if tick_size <= 0 or tick_value <= 0:
+            continue
+
+        total_risk += _estimate_order_risk_usd(
+            entry=entry,
+            sl=sl,
+            lot=volume,
+            tick_value=tick_value,
+            tick_size=tick_size,
+        )
+    return max(0.0, total_risk)
+
+
+def _estimate_open_positions_pnl(mt5_module) -> float:
+    total_pnl = 0.0
+    positions = mt5_module.positions_get() or []
+    for pos in positions:
+        total_pnl += _safe_float(getattr(pos, "profit", 0.0), 0.0)
+    return float(total_pnl)
+
 def count_open_positions(mt5_module, symbol: str) -> tuple:
     positions = mt5_module.positions_get(symbol=symbol)
     pos_count = len(positions) if positions else 0
@@ -361,11 +578,90 @@ def _get_trend_icon(df: pd.DataFrame) -> str:
     latest = df.iloc[-1]
     return f"{C.GREEN}▲{C.RST}" if latest['close'] > latest['ema_200'] else f"{C.RED}▼{C.RST}"
 
+def _trend_direction(latest: pd.Series) -> str:
+    close = _safe_float(latest.get("close"), 0.0)
+    ema_200 = _safe_float(latest.get("ema_200"), close)
+    return "UP" if close >= ema_200 else "DOWN"
+
+def _trend_icon_from_direction(direction: str) -> str:
+    return f"{C.GREEN}▲{C.RST}" if direction == "UP" else f"{C.RED}▼{C.RST}"
+
+def _volume_side_icon(side: str) -> str:
+    side = str(side or "NEUTRAL").upper()
+    if side == "BUY":
+        return f"{C.GREEN}↑{C.RST}"
+    if side == "SELL":
+        return f"{C.RED}↓{C.RST}"
+    return f"{C.GRAY}·{C.RST}"
+
+def _tf_volume_ratio(latest: pd.Series) -> float:
+    return _safe_float(
+        latest.get("tick_vol_ratio_slow", latest.get("tick_vol_ratio", latest.get("vol_ratio", 1.0))),
+        1.0,
+    )
+
+def _exec_volume_thresholds() -> tuple[float, float]:
+    tv_cfg = ((_SETTINGS.get("strategy", {}) or {}).get("tick_volume_gate", {}) or {})
+    strong = _safe_float(tv_cfg.get("strong_ratio_min", 1.6), 1.6)
+    elevated = max(1.2, strong * 0.8)
+    return elevated, strong
+
+def _format_exec_token(tf_str: str, direction: str, volume_side: str, vol_ratio: float) -> str:
+    elevated_thr, strong_thr = _exec_volume_thresholds()
+    marker = "TV"
+    style = ""
+    if vol_ratio >= strong_thr:
+        marker = "TV⚡"
+        style = f"{C.MAGENTA}{C.BOLD}"
+    elif vol_ratio >= elevated_thr:
+        marker = "TV+"
+        style = C.YELLOW
+
+    token = f"{tf_str}{_trend_icon_from_direction(direction)} {marker}{_volume_side_icon(volume_side)}{vol_ratio:.1f}x"
+    if style:
+        return f"{style}{token}{C.RST}"
+    return token
+
+def _tf_snapshot(tf_str: str, closed_df: pd.DataFrame) -> dict:
+    latest = closed_df.iloc[-1]
+    direction = _trend_direction(latest)
+    vol_ratio = _tf_volume_ratio(latest)
+    volume_side = str(latest.get("volume_side", "NEUTRAL")).upper()
+    return {
+        "tf": tf_str,
+        "direction": direction,
+        "vol_ratio": vol_ratio,
+        "volume_side": volume_side,
+        "is_htf": TF_MINUTES.get(tf_str, 0) >= 60,
+        "token": _format_exec_token(tf_str, direction, volume_side, vol_ratio),
+    }
+
+def _bias_summary(label: str, snapshots: list[dict]) -> str:
+    if not snapshots:
+        return f"{label} n/a"
+    up = sum(1 for snap in snapshots if snap["direction"] == "UP")
+    down = sum(1 for snap in snapshots if snap["direction"] == "DOWN")
+    if up > down:
+        bias = f"{C.GREEN}BULL{C.RST}"
+    elif down > up:
+        bias = _trend_icon_from_direction("DOWN")
+    else:
+        bias = f"{C.YELLOW}◆{C.RST}"
+    if up > down:
+        bias = _trend_icon_from_direction("UP")
+    return f"{label} {bias}"
+
 def _vol_badge(latest: pd.Series) -> str:
-    vr = latest.get('vol_ratio', 0)
-    if latest.get('vol_spike'): return f"{C.RED}VOL⚡{vr:.1f}{C.RST}"
-    elif latest.get('vol_dryup'): return f"{C.GRAY}VOL💤{vr:.1f}{C.RST}"
-    return f"VOL {vr:.1f}"
+    vr = latest.get('tick_vol_ratio_slow', latest.get('tick_vol_ratio', latest.get('vol_ratio', 0)))
+    v_side = str(latest.get('volume_side', 'NEUTRAL')).upper()
+    side_tag = "↑" if v_side == "BUY" else "↓" if v_side == "SELL" else "·"
+    if latest.get('volume_climax'):
+        return f"{C.YELLOW}TV!{side_tag}{vr:.1f}{C.RST}"
+    if latest.get('vol_spike'):
+        return f"{C.RED}TV⚡{side_tag}{vr:.1f}{C.RST}"
+    elif latest.get('vol_dryup'):
+        return f"{C.GRAY}TV💤{side_tag}{vr:.1f}{C.RST}"
+    return f"TV{side_tag} {vr:.1f}"
 
 def _safe_float(value, default: float = 0.0) -> float:
     try:
@@ -473,6 +769,97 @@ def _build_xag_follower_signal(last_xau: dict, latest_price: float, atr: float) 
     return signal
 
 
+def _normalize_standard_symbol(symbol: str) -> str:
+    sym = str(symbol or "").upper().strip()
+    if sym.endswith(("M", "C")):
+        sym = sym[:-1]
+    return sym
+
+
+def _enforce_symbol_sl_cap(signal: dict, atr_value: float = 0.0) -> None:
+    """
+    Enforce symbol-level SL distance envelope:
+    - min floor (ATR-based) to avoid obvious stop-hunt zones
+    - max cap (absolute/ATR-based) to protect capital
+    Keeps TP ratios unchanged so strategy RR structure remains intact.
+    """
+    side = str(signal.get("side", "")).upper()
+    if side not in {"BUY", "SELL"}:
+        return
+
+    entry = _safe_float(signal.get("entry_price"), 0.0)
+    sl = _safe_float(signal.get("sl"), 0.0)
+    if entry <= 0 or sl <= 0:
+        return
+
+    risk_cfg = (_SETTINGS.get("risk_limits", {}) or {})
+    caps = risk_cfg.get("max_sl_distance_abs", {}) or {}
+    atr_caps = risk_cfg.get("max_sl_atr_multiplier", {}) or {}
+    atr_floors = risk_cfg.get("min_sl_atr_multiplier", {}) or {}
+    sym = _normalize_standard_symbol(signal.get("symbol", ""))
+    abs_cap = _safe_float(caps.get(sym), 0.0)
+    atr_mult_cap = _safe_float(atr_caps.get(sym), 0.0)
+    atr_mult_floor = _safe_float(atr_floors.get(sym), 0.0)
+    atr_now = max(0.0, _safe_float(atr_value, 0.0))
+
+    effective_cap_candidates = []
+    if abs_cap > 0:
+        effective_cap_candidates.append(abs_cap)
+    if atr_now > 0 and atr_mult_cap > 0:
+        effective_cap_candidates.append(atr_now * atr_mult_cap)
+    effective_cap = min(effective_cap_candidates) if effective_cap_candidates else 0.0
+    effective_floor = (atr_now * atr_mult_floor) if (atr_now > 0 and atr_mult_floor > 0) else 0.0
+
+    if effective_cap > 0 and effective_floor > effective_cap:
+        # Never allow floor > cap; risk cap always wins.
+        effective_floor = effective_cap
+    if effective_cap <= 0 and effective_floor <= 0:
+        return
+
+    sl_dist = abs(entry - sl)
+
+    rr_by_tp = {}
+    for tp_key in ("tp1", "tp2", "tp3"):
+        if tp_key not in signal:
+            continue
+        tp_val = _safe_float(signal.get(tp_key), 0.0)
+        if tp_val <= 0:
+            continue
+        rr_by_tp[tp_key] = abs(tp_val - entry) / max(sl_dist, 1e-9)
+
+    target_dist = sl_dist
+    reason_bits = []
+    if effective_floor > 0 and target_dist < effective_floor:
+        target_dist = effective_floor
+        reason_bits.append("stophunt-floor")
+    if effective_cap > 0 and target_dist > effective_cap:
+        target_dist = effective_cap
+        reason_bits.append("risk-cap")
+    if abs(target_dist - sl_dist) < 1e-9:
+        return
+
+    if side == "BUY":
+        signal["sl"] = entry - target_dist
+        for tp_key, rr in rr_by_tp.items():
+            signal[tp_key] = entry + (target_dist * rr)
+    else:
+        signal["sl"] = entry + target_dist
+        for tp_key, rr in rr_by_tp.items():
+            signal[tp_key] = entry - (target_dist * rr)
+
+    cap_reason = []
+    if abs_cap > 0:
+        cap_reason.append(f"abs={abs_cap:.3f}")
+    if atr_now > 0 and atr_mult_cap > 0:
+        cap_reason.append(f"atr={atr_now:.3f} x {atr_mult_cap:.2f}")
+    if atr_now > 0 and atr_mult_floor > 0:
+        cap_reason.append(f"floor={atr_now:.3f} x {atr_mult_floor:.2f}")
+    logger.warning(
+        f"⚠️ [SL GUARD] {signal.get('symbol')} SL distance {sl_dist:.3f} -> {target_dist:.3f} "
+        f"[{'+'.join(reason_bits)}] ({', '.join(cap_reason)})"
+    )
+
+
 def tick_cycle(mode: str, symbol: str, timeframe_str: str, executor: Executor, cycle_num: int = 0, cycle_cache: dict = None):
     try:
         from backend.trader.data.mapper import mapper
@@ -509,9 +896,8 @@ def tick_cycle(mode: str, symbol: str, timeframe_str: str, executor: Executor, c
         acct = get_real_account_state(mt5)
         # Apply Session Reset logic if active
         if "--reset-pnl" in sys.argv:
-            session_deals = mt5.history_deals_get(SESSION_START_TIME, datetime.now())
-            pnl_session = sum(d.profit for d in session_deals) if session_deals else 0.0
-            acct['daily_pnl'] = pnl_session
+            session_summary = get_closed_trade_summary(mt5, SESSION_START_TIME)
+            acct['daily_pnl'] = session_summary["realized_pnl"]
             acct['session_reset'] = True
 
         market_state = get_real_market_state(mt5, mapper.to_broker(symbol))
@@ -534,6 +920,14 @@ def tick_cycle(mode: str, symbol: str, timeframe_str: str, executor: Executor, c
         events = detect_liquidity_events(work_df, {"eqh_eql_threshold_points": 50, "sweep_lookback_bars": 80})
         latest_features = work_df.iloc[-1]
         market_state["vol_ratio"] = _safe_float(latest_features.get("vol_ratio", 1.0), 1.0)
+        market_state["tick_vol_ratio"] = _safe_float(
+            latest_features.get("tick_vol_ratio_slow", latest_features.get("tick_vol_ratio", latest_features.get("vol_ratio", 1.0))),
+            1.0,
+        )
+        market_state["tick_volume_side"] = str(latest_features.get("volume_side", "NEUTRAL")).upper()
+        market_state["tick_volume_climax"] = bool(latest_features.get("volume_climax", False))
+        market_state["buy_pressure"] = _safe_float(latest_features.get("buy_pressure", 0.5), 0.5)
+        market_state["sell_pressure"] = _safe_float(latest_features.get("sell_pressure", 0.5), 0.5)
         market_state["atr_deviation"] = _compute_atr_deviation(work_df)
 
         if mode == "live" and not is_shadow:
@@ -567,11 +961,21 @@ def tick_cycle(mode: str, symbol: str, timeframe_str: str, executor: Executor, c
                 htf_val = 'BULLISH' if latest['close'] > latest_features.get('ema_200', latest['close']) else 'BEARISH'
             htf_cache[symbol] = htf_val
 
+        session_label = time_utils.assign_session(datetime.now(timezone.utc))
+        try:
+            bar_ts = pd.to_datetime(latest.get("time"), unit="s", utc=True, errors="coerce")
+            if not pd.isna(bar_ts):
+                session_label = time_utils.assign_session(bar_ts.to_pydatetime())
+        except Exception:
+            pass
+
         context = {
-            "symbol": symbol, 
-            "timeframe": timeframe_str, 
-            "regime_result": regime_res, 
-            "htf_ema_align": htf_val
+            "symbol": symbol,
+            "timeframe": timeframe_str,
+            "regime_result": regime_res,
+            "htf_ema_align": htf_val,
+            "session": session_label,
+            "current_session": session_label,
         }
         signal = select_and_generate_signal(work_df, context, events, current_bar=current_bar)
 
@@ -596,6 +1000,9 @@ def tick_cycle(mode: str, symbol: str, timeframe_str: str, executor: Executor, c
         if missing or signal["side"] not in {"BUY", "SELL"}:
             logger.warning(f"{display_sym} 🚫 Invalid signal payload dropped: missing={missing} side={signal.get('side')}")
             return
+
+        signal_atr = _safe_float(work_df["atr"].iloc[-1] if "atr" in work_df.columns else 0.0, 0.0)
+        _enforce_symbol_sl_cap(signal, atr_value=signal_atr)
 
         logger.info(
             f"{display_sym} 🎯 {C.BOLD}{'🟢 BUY' if signal['side'] == 'BUY' else '🔴 SELL'}{C.RST} "
@@ -674,7 +1081,11 @@ def tick_cycle(mode: str, symbol: str, timeframe_str: str, executor: Executor, c
                 volume_step=market_state['volume_step']
             )
 
-            lot = max(market_state['volume_min'], round(raw_lot, 2))
+            volume_min = _safe_float(market_state.get("volume_min", 0.01), 0.01)
+            volume_step = _safe_float(market_state.get("volume_step", 0.01), 0.01)
+            volume_max = _safe_float(market_state.get("volume_max", 200.0), 200.0)
+            lot = max(volume_min, round(raw_lot, 2))
+            lot = min(volume_max, max(volume_min, _round_down_to_step(lot, volume_step)))
 
             # ─── Safety Cap (Scalable Growth) ──────────
             safety = CONFIG.get("safety_cap", {"equity_threshold": 300.0, "max_lot": 0.01})
@@ -690,6 +1101,98 @@ def tick_cycle(mode: str, symbol: str, timeframe_str: str, executor: Executor, c
                 lot = max(market_state['volume_min'], round(lot * 0.5, 2))
                 logger.warning(f"⚠️ [VOL] Warning Active - Reducing lot by 50% -> {lot}")
 
+            # ─── Hard Equity-Based Capital Protection (non-bypass) ───
+            risk_cfg = (_SETTINGS.get("risk_limits", {}) or {})
+            hard_trade_risk_pct = max(
+                0.01,
+                _safe_float(
+                    risk_cfg.get("hard_risk_per_trade_pct", risk_cfg.get("max_risk_per_trade_percent", 0.5)),
+                    0.5,
+                ),
+            )
+            hard_open_risk_pct = max(0.05, _safe_float(risk_cfg.get("hard_max_open_risk_pct", 1.2), 1.2))
+            hard_margin_util_after_pct = max(5.0, _safe_float(risk_cfg.get("hard_margin_util_after_pct", 30.0), 30.0))
+            hard_min_free_margin_pct = max(5.0, _safe_float(risk_cfg.get("hard_min_free_margin_pct", 65.0), 65.0))
+
+            entry_px = _safe_float(signal.get("entry_price"), 0.0)
+            sl_px = _safe_float(signal.get("sl"), 0.0)
+            tick_value = _safe_float(market_state.get("tick_value"), 0.0)
+            tick_size = _safe_float(market_state.get("tick_size"), 0.0)
+            risk_per_lot_usd = _estimate_order_risk_usd(
+                entry=entry_px,
+                sl=sl_px,
+                lot=1.0,
+                tick_value=tick_value,
+                tick_size=tick_size,
+            )
+            if risk_per_lot_usd <= 0:
+                logger.warning(f"  🚫 BLOCKED: invalid risk model for {symbol} (tick/sl data invalid)")
+                return
+
+            max_trade_risk_usd = max(0.0, acct['equity'] * (hard_trade_risk_pct / 100.0))
+            max_lot_by_trade_risk = _round_down_to_step(max_trade_risk_usd / risk_per_lot_usd, volume_step)
+            if max_lot_by_trade_risk < volume_min:
+                logger.warning(
+                    f"  🚫 BLOCKED: {symbol} min lot {volume_min:.2f} exceeds per-trade risk cap "
+                    f"${max_trade_risk_usd:.2f} ({hard_trade_risk_pct:.2f}% of equity)"
+                )
+                return
+            if lot > max_lot_by_trade_risk:
+                logger.info(
+                    f"🛡️ [RISK CAP] Per-trade cap {symbol}: lot {lot:.2f} -> {max_lot_by_trade_risk:.2f} "
+                    f"(budget ${max_trade_risk_usd:.2f})"
+                )
+                lot = max_lot_by_trade_risk
+
+            open_risk_usd = _estimate_open_portfolio_risk_usd(mt5)
+            max_open_risk_usd = max(0.0, acct['equity'] * (hard_open_risk_pct / 100.0))
+            candidate_risk_usd = risk_per_lot_usd * lot
+            if open_risk_usd + candidate_risk_usd > max_open_risk_usd:
+                remaining_risk_usd = max(0.0, max_open_risk_usd - open_risk_usd)
+                max_lot_by_open_risk = _round_down_to_step(remaining_risk_usd / risk_per_lot_usd, volume_step)
+                if max_lot_by_open_risk < volume_min:
+                    logger.warning(
+                        f"  🚫 BLOCKED: open-risk budget exhausted "
+                        f"(open=${open_risk_usd:.2f}, cap=${max_open_risk_usd:.2f})"
+                    )
+                    return
+                if max_lot_by_open_risk < lot:
+                    logger.info(
+                        f"🛡️ [PORTFOLIO RISK CAP] lot {lot:.2f} -> {max_lot_by_open_risk:.2f} "
+                        f"(open ${open_risk_usd:.2f} / cap ${max_open_risk_usd:.2f})"
+                    )
+                    lot = max_lot_by_open_risk
+                    candidate_risk_usd = risk_per_lot_usd * lot
+
+            loss_limit_currency = _SETTINGS.get("risk_limits", {}).get("max_daily_loss_currency", 14.0)
+            remaining_loss_budget_usd = remaining_additional_loss_budget(
+                acct.get("daily_pnl", 0.0),
+                loss_limit_currency,
+            )
+            if math.isfinite(remaining_loss_budget_usd):
+                available_loss_budget_usd = max(0.0, remaining_loss_budget_usd - open_risk_usd)
+                if available_loss_budget_usd <= 0:
+                    logger.warning(
+                        f"  🚫 BLOCKED: daily loss budget exhausted "
+                        f"(PnL=${acct.get('daily_pnl', 0.0):+.2f}, open-risk=${open_risk_usd:.2f}, "
+                        f"limit=${abs(float(loss_limit_currency or 0.0)):.2f})"
+                    )
+                    return
+                max_lot_by_loss_budget = _round_down_to_step(available_loss_budget_usd / risk_per_lot_usd, volume_step)
+                if max_lot_by_loss_budget < volume_min:
+                    logger.warning(
+                        f"  🚫 BLOCKED: {symbol} would exceed remaining daily loss budget "
+                        f"(available=${available_loss_budget_usd:.2f}, risk/lot=${risk_per_lot_usd:.2f})"
+                    )
+                    return
+                if max_lot_by_loss_budget < lot:
+                    logger.info(
+                        f"🛡️ [DAILY LOSS CAP] lot {lot:.2f} -> {max_lot_by_loss_budget:.2f} "
+                        f"(open-risk ${open_risk_usd:.2f}, remaining budget ${remaining_loss_budget_usd:.2f})"
+                    )
+                    lot = max_lot_by_loss_budget
+                    candidate_risk_usd = risk_per_lot_usd * lot
+
             margin_req = mt5.order_calc_margin(
                 mt5.ORDER_TYPE_BUY if signal['side'] == 'BUY' else mt5.ORDER_TYPE_SELL,
                 broker_symbol,
@@ -701,7 +1204,26 @@ def tick_cycle(mode: str, symbol: str, timeframe_str: str, executor: Executor, c
                 return
 
             utilization_after = ((acct.get('margin', 0) + margin_req) / max(acct['equity'], 1)) * 100
-            logger.info(f"🛡️ [AUDIT] Margin Check: Req=${margin_req:.2f} | Est Utilization={utilization_after:.1f}%")
+            free_margin_after = acct.get('margin_free', 0.0) - margin_req
+            free_margin_after_pct = (free_margin_after / max(acct['equity'], 1.0)) * 100.0
+            logger.info(
+                f"🛡️ [AUDIT] Risk open=${open_risk_usd:.2f} + new=${candidate_risk_usd:.2f} "
+                f"(cap=${max_open_risk_usd:.2f}) | Margin Req=${margin_req:.2f} "
+                f"| Util~{utilization_after:.1f}% | FreeAfter~{free_margin_after_pct:.1f}%"
+            )
+
+            if utilization_after > hard_margin_util_after_pct:
+                logger.warning(
+                    f"  🚫 BLOCKED: est margin utilization {utilization_after:.1f}% "
+                    f"> hard cap {hard_margin_util_after_pct:.1f}%"
+                )
+                return
+            if free_margin_after_pct < hard_min_free_margin_pct:
+                logger.warning(
+                    f"  🚫 BLOCKED: free margin after trade {free_margin_after_pct:.1f}% "
+                    f"< hard minimum {hard_min_free_margin_pct:.1f}%"
+                )
+                return
 
             # Ensure margin_req is affordable
             if margin_req <= acct['margin_free'] * 0.3:
@@ -741,18 +1263,32 @@ def _print_header(cycle: int, mode: str, opus_status=None, news_blocked: bool = 
 
 def main():
     args = parse_args()
+    if args.mode == "live" and getattr(db, "fallback_mode", False):
+        logger.critical(
+            "DB hard-stop: opus.db unavailable/corrupted, DataStore is in fallback mode. "
+            "LIVE mode aborted."
+        )
+        return 2
     use_overrides = _resolve_override_toggle(args)
+    min_trades = int(max(0, _resolve_override_number(args.override_min_trades, "min_trades", 20)))
+    min_win_rate = float(max(0.0, _resolve_override_number(args.override_min_win_rate, "min_win_rate", 45.0)))
+    min_pf = float(max(0.0, _resolve_override_number(args.override_min_pf, "min_profit_factor", 1.20)))
+    max_dd = float(max(0.0, _resolve_override_number(args.override_max_dd, "max_drawdown_pct", 15.0)))
+    search_completed_runs = int(max(1, _resolve_override_number(args.override_search_completed_runs, "search_completed_runs", 30)))
     require_positive_score = _resolve_override_require_positive_score(args)
+    require_positive_pnl = _resolve_override_require_positive_pnl(args)
+    _apply_runtime_live_symbol_overrides(args.mode)
     _apply_backtest_tf_overrides(
         enabled=use_overrides,
-        min_trades=args.override_min_trades,
-        min_win_rate=args.override_min_win_rate,
-        min_pf=args.override_min_pf,
-        max_dd=args.override_max_dd,
-        require_positive_pnl=bool(args.override_require_positive_pnl),
-        search_completed_runs=args.override_search_completed_runs,
+        min_trades=min_trades,
+        min_win_rate=min_win_rate,
+        min_pf=min_pf,
+        max_dd=max_dd,
+        require_positive_pnl=require_positive_pnl,
+        search_completed_runs=search_completed_runs,
         require_positive_score=require_positive_score,
     )
+    _apply_pinned_execution_timeframes()
     DAILY_TARGET = governor.daily_target_usd
     _print_startup_header(args.mode, DAILY_TARGET)
     executor = Executor(mode=args.mode)
@@ -760,6 +1296,8 @@ def main():
 
     if args.mode in ["live", "dry_run"]:
         if not fetcher.connect(): return
+        if args.mode == "live":
+            log_trade_block("live startup", level="critical", throttle_seconds=0)
         brain_bridge.connect()
         _bootstrap_closed_deals_360d(mt5)
         symbol_tuner.set_symbol_universe(CONFIG["symbols"] + CONFIG.get("shadow_symbols", []))
@@ -782,9 +1320,9 @@ def main():
                         logger.warning(f"News refresh failed: {_news_err}")
 
                 # Calculate session PnL (since bot started or reset)
-                server_time = datetime.now(timezone.utc)
-                session_deals = mt5.history_deals_get(SESSION_START_TIME, server_time)
-                pnl_session = sum(d.profit for d in session_deals) if session_deals else 0.0
+                server_time = utc_now()
+                session_summary = get_closed_trade_summary(mt5, SESSION_START_TIME, server_time)
+                pnl_session = session_summary["realized_pnl"]
 
                 acct = get_real_account_state(mt5)
                 # If reset pnl, we also want to clear the global cooldowns to let it trade
@@ -815,20 +1353,40 @@ def main():
                     logger.info(f"  📊 PnL วันนี้ {C.GREEN if pnl_daily >= 0 else C.RED}${pnl_daily:+.2f}{C.RST} │ Session {C.CYAN}${pnl_session:+.2f}{C.RST}")
 
                 # ─── RISK LIMITS (Unified with settings.json) ───
-                loss_limit_currency = _SETTINGS.get("risk_limits", {}).get("max_daily_loss_currency", 14.0)
-                
+                loss_limit_currency = abs(float(_SETTINGS.get("risk_limits", {}).get("max_daily_loss_currency", 14.0) or 0.0))
+                floating_open_pnl = _estimate_open_positions_pnl(mt5)
+
                 # Check for breach
                 pnl_check = pnl_session if args.reset_pnl else acct['daily_pnl']
+                combined_pnl_check = combined_realized_and_floating_pnl(pnl_check, floating_open_pnl)
                 
                 # If reset_pnl is active, we ALSO override the acct['daily_pnl'] used by the governor
                 if args.reset_pnl:
                     acct['daily_pnl'] = pnl_session
-                
-                if pnl_check <= -abs(loss_limit_currency):
+
+                if floating_open_pnl < 0 and is_currency_loss_breached(combined_pnl_check, loss_limit_currency):
                     from backend.trader.notification.telegram import notify_status
-                    msg = f"🛡️ KILL-SWITCH ACTIVATED: Loss ${pnl_check:.2f} reached limit -${loss_limit_currency}. Bot paused 15 min."
+                    msg = (
+                        f"🛑 PREEMPTIVE LOSS FLATTEN: realized ${pnl_check:.2f} + "
+                        f"floating ${floating_open_pnl:.2f} = ${combined_pnl_check:.2f} "
+                        f"(limit -${loss_limit_currency:.2f}). Closing all positions."
+                    )
                     notify_status(msg)
-                    logger.critical(f"  ✖ ERROR   LOSS LIMIT BREACHED ${pnl_check:.2f} (Limit: -${loss_limit_currency}) -- paused 15 min")
+                    logger.critical(
+                        f"  ✖ ERROR   PROJECTED LOSS BREACH ${combined_pnl_check:.2f} "
+                        f"(realized ${pnl_check:.2f} + floating ${floating_open_pnl:.2f}, "
+                        f"limit -${loss_limit_currency:.2f}) -- flattening positions"
+                    )
+                    if args.mode == "live":
+                        executor.close_all_positions()
+                    time.sleep(900)
+                    continue
+                
+                if is_currency_loss_breached(pnl_check, loss_limit_currency):
+                    from backend.trader.notification.telegram import notify_status
+                    msg = f"🛡️ KILL-SWITCH ACTIVATED: Loss ${pnl_check:.2f} reached limit -${loss_limit_currency:.2f}. Bot paused 15 min."
+                    notify_status(msg)
+                    logger.critical(f"  ✖ ERROR   LOSS LIMIT BREACHED ${pnl_check:.2f} (Limit: -${loss_limit_currency:.2f}) -- paused 15 min")
                     time.sleep(900)
                     continue
 
@@ -843,14 +1401,15 @@ def main():
                 # ─── MAINTENANCE & GAP SAFETY ───
                 scheduler.run_cycle(acct)
                 maint_blocked, maint_reason = scheduler.is_safety_blocked()
-                if maint_blocked:
-                    logger.info(f"  🕒 MAINTENANCE: {maint_reason} — รอ 60 วินาที")
-                    time.sleep(60)
-                    continue
-
-                if news_blocked and not news_filter.is_safe(CONFIG["symbols"][0]):
-                    logger.info(f"  🏛️ NEWS BLOCK — รอ 60 วินาที")
-                    time.sleep(60)
+                if handle_safety_pause(
+                    mode=args.mode,
+                    maintenance_blocked=maint_blocked,
+                    maintenance_reason=maint_reason,
+                    news_blocked=news_blocked,
+                    lead_symbol_news_safe=news_filter.is_safe(CONFIG["symbols"][0]),
+                    manage_positions=manage_open_positions,
+                    logger=logger,
+                ):
                     continue
 
                 # ─── DEALS MONITORING ───
@@ -899,7 +1458,7 @@ def main():
                     symbol_tfs = CONFIG.get("symbol_timeframes", {}).get(broker_sym, CONFIG["timeframes"])
                     execution_tfs = CONFIG.get("execution_timeframes", {}).get(broker_sym, symbol_tfs)
                     
-                    trend_map = []
+                    tf_snapshots = []
                     for tf_str in symbol_tfs:
                         df_tf = fetcher.get_rates(symbol, TIMEFRAME_MAP.get(tf_str), 400)
                         if df_tf is not None:
@@ -908,30 +1467,37 @@ def main():
                             if closed_df.empty:
                                 continue
                             closed_df = add_volatility_features(closed_df)
-                            v_curr = int(closed_df['tick_volume'].iloc[-1]) if 'tick_volume' in closed_df.columns else 0
-                            v_avg = int(closed_df['tick_volume'].tail(20).mean()) if v_curr else 0
-                            trend_map.append(f"{tf_str}:EMA{_get_trend_icon(closed_df)} {'HI:' if v_curr > v_avg*1.5 else 'LOW:' if v_curr < v_avg*0.5 else 'AVG:'}{v_curr}/{v_avg}")
+                            tf_snapshots.append(_tf_snapshot(tf_str, closed_df))
+
+                    exec_tokens = [
+                        snap["token"]
+                        for snap in tf_snapshots
+                        if snap["tf"] in execution_tfs
+                    ]
+                    if not exec_tokens:
+                        exec_tokens = [snap["token"] for snap in tf_snapshots[: min(3, len(tf_snapshots))]]
+                    htf_snapshots = [snap for snap in tf_snapshots if snap["is_htf"]]
                     
                     logger.info(
                         f"  {f'{C.CYAN}[SHADOW]{C.RST} ' if symbol in CONFIG.get('shadow_symbols', []) else ''}"
-                        f"{_sym(symbol)} TREND: {' '.join(trend_map)} | EXEC TF: {','.join(execution_tfs)}"
+                        f"{_sym(symbol)} │ {_bias_summary('Bias', tf_snapshots)} │ {_bias_summary('HTF', htf_snapshots)}\n"
+                        f"    ↳ Exec {' | '.join(exec_tokens)}"
                     )
                     for tf_str in execution_tfs:
                         tick_cycle(args.mode, symbol, tf_str, executor, cycle, cycle_cache=cycle_cache)
 
                 # ─── ALWAYS MANAGE OPEN POSITIONS (SAFETY FIRST) ───
-                if args.mode == "live":
-                    try:
-                        m = manage_open_positions()
-                        logger.info(f"  🛡️ Shield: managed {m if isinstance(m, int) else '?'} positions")
-                    except Exception as _pos_err:
-                        logger.error(f"Position manager error: {_pos_err}", exc_info=True)
+                run_live_position_management(
+                    mode=args.mode,
+                    manage_positions=manage_open_positions,
+                    logger=logger,
+                )
                 
                 for sym in CONFIG["symbols"] + CONFIG.get("shadow_symbols", []):
                     tk = mt5.symbol_info_tick(sym)
                     if tk: shadow_engine.track_experience(sym, tk.bid or tk.last)
 
-                logger.info(f"  {C.DIM}⏳ รอรอบถัดไป 10 วินาที...{C.RST}"); time.sleep(10)
+                logger.info(f"  {C.DIM}⏳ Next cycle in 10s{C.RST}"); time.sleep(10)
         except KeyboardInterrupt: logger.info(f"\n{C.YELLOW}⚡ ปิดระบบ...{C.RST}")
         finally: fetcher.disconnect()
     

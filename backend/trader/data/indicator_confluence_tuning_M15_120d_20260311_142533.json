@@ -1,0 +1,49 @@
+[
+  {
+    "symbol": "XAUUSD",
+    "timeframe": "M15",
+    "days": 120,
+    "min_score": 7,
+    "mom_delta": 0.12,
+    "momentum_buy_min": 100.12,
+    "momentum_sell_max": 99.88,
+    "sl_atr_mult": 1.7,
+    "tp_rr": 2.0,
+    "trades": 878,
+    "wins": 305,
+    "losses": 573,
+    "win_rate": 34.74,
+    "profit_factor": 0.946,
+    "net_r": -32.015,
+    "avg_r": -0.0365,
+    "max_dd_r": 91.424,
+    "score": -204.3085,
+    "baseline": {
+      "symbol": "XAUUSD",
+      "timeframe": "M15",
+      "days": 120,
+      "min_score": 7,
+      "mom_delta": 0.12,
+      "momentum_buy_min": 100.12,
+      "momentum_sell_max": 99.88,
+      "sl_atr_mult": 1.7,
+      "tp_rr": 2.0,
+      "trades": 878,
+      "wins": 305,
+      "losses": 573,
+      "win_rate": 34.74,
+      "profit_factor": 0.946,
+      "net_r": -32.015,
+      "avg_r": -0.0365,
+      "max_dd_r": 91.424,
+      "score": -204.3085
+    },
+    "improvement": {
+      "score_delta": 0.0,
+      "net_r_delta": 0.0,
+      "wr_delta": 0.0,
+      "pf_delta": 0.0,
+      "trades_delta": 0
+    }
+  }
+]

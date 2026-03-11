@@ -8,7 +8,9 @@ import logging
 import requests
 from dotenv import load_dotenv
 
-load_dotenv("d:/VibeCode/Trade/.env")
+from backend.trader.config.paths import ENV_PATH
+
+load_dotenv(ENV_PATH)
 
 logger = logging.getLogger("telegram")
 import time

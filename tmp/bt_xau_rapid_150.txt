@@ -1,0 +1,47 @@
+  [MT5] Connected. Fetching 10 days for XAUUSDm (M5)...
+  [DATA] Loaded 1880 bars from MT5 for XAUUSDm (M5)
+  [MT5] real spread for XAUUSDm: 396 points
+  [WARN] MT5 spread 396pts is off-session inflated -> capped to 50pts
+
+============================================================
+  OPUS Backtest V2 - XAUUSD
+  Bars: 1880 | Lookback: 100 | Hold: 50
+  Timeframe: M5 | Strategy: rapid_pullback
+  Initial Equity: $150.00
+  Spread sim: 50 points
+============================================================
+
+  Computing features on full dataset...
+  Features computed. Starting walk-forward...
+
+[2m23:41:25[0m [97mBRAIN [XAUUSD] Deep Brain loaded from models using model: XAUUSDm[0m
+[2m23:41:26[0m [97mConnected to MT5 successfully.[0m
+[2m23:41:30[0m [97m🧠 AI ENGINE APPROVED: RAPID_PULLBACK | ML Probability: 71.0% | RR=1.40 | Score=0.604 | VolR=2.1 OBV=▲[0m
+[2m23:41:30[0m [97m  💰 CAPITAL: Bal=$0.00 Eq=$150.00 Free=$0.00[0m
+[2m23:41:43[0m [97m🧠 AI ENGINE APPROVED: RAPID_PULLBACK | ML Probability: 68.5% | RR=1.40 | Score=0.601 | VolR=1.7 OBV=▼[0m
+[2m23:41:43[0m [97m  💰 CAPITAL: Bal=$0.00 Eq=$131.61 Free=$0.00[0m
+    [BLOCK] Bar 742: RAPID_PULLBACK BLOCKED - ["BLOCKED: Max daily loss '10.0%' exceeded (13.97%)."]
+
+============================================================
+  BACKTEST RESULTS - XAUUSD
+============================================================
+  Total Signals Generated : 2
+  Signals Blocked by Risk : 1
+  Trades Executed         : 1
+  Win Rate                : 0.0%
+  Profit Factor           : 0.0
+  Max Drawdown            : 12.26%
+  Net P&L                 : $-18.3882
+  Final Equity            : $131.6118
+============================================================
+
+  [ANALYSIS] Per-Model Breakdown:
+    [RAPID_PULLBACK] Trades=1 | WR=0.0% | PF=0.00 | Net=$-18.3882
+
+  Last 10 trades:
+    [LOSS] Bar 301: BUY RAPID_PULLBACK [Strong Trend (U] | PnL=$-18.3882 | Conf=0.63
+
+  [DIAG] Block Reason Breakdown:
+    [   1x] BLOCKED: Max daily loss '10.0%' exceeded (13.97%).
+
+  [FILE] Results saved to d:/VibeCode/Trade/backend/trader/data/backtest_XAUUSD_rapid_pullback_M5_10d_20260310_234207.json

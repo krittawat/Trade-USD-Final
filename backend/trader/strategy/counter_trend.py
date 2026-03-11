@@ -18,9 +18,11 @@ import logging
 import numpy as np
 import pandas as pd
 
+from backend.trader.config.paths import SETTINGS_PATH
+
 logger = logging.getLogger("counter_trend")
 
-with open("d:/VibeCode/Trade/backend/trader/config/settings.json") as _f:
+with open(SETTINGS_PATH, encoding="utf-8") as _f:
     _CT_CFG = json.load(_f).get("strategy", {}).get("counter_trend", {})
 
 RSI_OVERBOUGHT = 65       # V2: Widened from 75 for more trades

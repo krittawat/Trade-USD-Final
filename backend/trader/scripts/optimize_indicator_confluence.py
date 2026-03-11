@@ -178,13 +178,13 @@ def _precompute_frame(df: pd.DataFrame, base: dict) -> Dict[str, np.ndarray]:
         ],
     )
 
-    close = df["close"].fillna(method="ffill").fillna(method="bfill").to_numpy(dtype=float)
-    high = df["high"].fillna(method="ffill").fillna(method="bfill").to_numpy(dtype=float)
-    low = df["low"].fillna(method="ffill").fillna(method="bfill").to_numpy(dtype=float)
+    close = df["close"].ffill().bfill().to_numpy(dtype=float)
+    high = df["high"].ffill().bfill().to_numpy(dtype=float)
+    low = df["low"].ffill().bfill().to_numpy(dtype=float)
 
-    atr = df["atr"].fillna(method="ffill").fillna(0.0).to_numpy(dtype=float)
-    atr_baseline = df["atr_baseline"].fillna(method="ffill").fillna(0.0).to_numpy(dtype=float)
-    compression_ratio = df["compression_ratio"].fillna(method="ffill").fillna(1.0).to_numpy(dtype=float)
+    atr = df["atr"].ffill().fillna(0.0).to_numpy(dtype=float)
+    atr_baseline = df["atr_baseline"].ffill().fillna(0.0).to_numpy(dtype=float)
+    compression_ratio = df["compression_ratio"].ffill().fillna(1.0).to_numpy(dtype=float)
     vol_ratio = df["vol_ratio"].fillna(1.0).to_numpy(dtype=float)
     rsi = df["rsi"].fillna(50.0).to_numpy(dtype=float)
     macd_line = df["macd_line"].fillna(0.0).to_numpy(dtype=float)
@@ -505,7 +505,11 @@ def _optimize_symbol(
 
     assert best is not None
     if baseline_metrics is None:
-        baseline_metrics = best.copy()
+        baseline_metrics = dict(best)
+    else:
+        baseline_metrics = dict(baseline_metrics)
+
+    best = dict(best)
 
     improvement = {
         "score_delta": round(best["score"] - baseline_metrics["score"], 4),

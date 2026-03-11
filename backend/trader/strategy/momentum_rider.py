@@ -23,9 +23,11 @@ import logging
 import numpy as np
 import pandas as pd
 
+from backend.trader.config.paths import SETTINGS_PATH
+
 logger = logging.getLogger("momentum_rider")
 
-with open("d:/VibeCode/Trade/backend/trader/config/settings.json") as _f:
+with open(SETTINGS_PATH, encoding="utf-8") as _f:
     _MR_CFG = json.load(_f).get("strategy", {}).get("momentum_rider", {})
 
 MIN_MOM_CONFIDENCE = _MR_CFG.get("min_confidence", 65)
@@ -35,8 +37,13 @@ CONFIGS = {
     "DEFAULT": {
         "impulse_atr_min": 1.5,     # Min net displacement in ATR units (5-bar)
         "body_dom_min": 0.40,       # Min avg body ratio
+        "min_body_ratio": 0.28,     # Last-candle body ratio floor
         "vol_ratio_min": 0.9,       # Volume at or above average
         "consec_min": 2,            # Min consecutive direction bars
+        "min_adx": 20.0,            # Must be in a real directional regime
+        "min_di_gap": 2.5,          # DI separation avoids weak impulses
+        "min_roc": 0.02,            # Minimum directional ROC
+        "require_body_accel": True, # Avoid flat/distributed candles
         "sl_swing_lookback": 10,    # Bars to look back for swing SL
         "sl_atr_max": 2.0,          # Max ATR distance for fixed SL fallback
         "sl_mult": 2.0,             # SL = ATR × 2.0 (survive spread + noise)
@@ -47,8 +54,12 @@ CONFIGS = {
     "XAU": {  # Gold moves smoothly — catch early, survive real spread (396pts)
         "impulse_atr_min": 2.5,     # V3: Only trade truly strong impulse moves
         "body_dom_min": 0.40,
+        "min_body_ratio": 0.30,
         "vol_ratio_min": 0.9,
         "consec_min": 2,
+        "min_adx": 22.0,
+        "min_di_gap": 3.5,
+        "min_roc": 0.03,
         "sl_swing_lookback": 10,
         "sl_atr_max": 2.5,          # Wider to survive 396-pt spread
         "tp1_rr": 1.0,              # Micro-scalp
@@ -58,8 +69,12 @@ CONFIGS = {
     "XAG": {
         "impulse_atr_min": 2.0,
         "body_dom_min": 0.40,
+        "min_body_ratio": 0.30,
         "vol_ratio_min": 0.9,
         "consec_min": 2,
+        "min_adx": 22.0,
+        "min_di_gap": 3.0,
+        "min_roc": 0.03,
         "sl_swing_lookback": 12,
         "sl_atr_max": 3.0,
         "tp1_rr": 1.0,
@@ -69,8 +84,12 @@ CONFIGS = {
     "BTC": {
         "impulse_atr_min": 1.5,
         "body_dom_min": 0.35,
+        "min_body_ratio": 0.32,
         "vol_ratio_min": 0.8,
         "consec_min": 2,
+        "min_adx": 20.0,
+        "min_di_gap": 4.0,
+        "min_roc": 0.06,
         "sl_swing_lookback": 10,
         "sl_atr_max": 3.0,
         "tp1_rr": 1.0,
@@ -154,7 +173,12 @@ def signal_momentum_rider(df: pd.DataFrame, context: dict) -> dict:
     force_ema = float(latest.get('force_ema', 0))
     if np.isnan(force_ema):
         force_ema = 0
+    adx = float(latest.get('adx', 0))
+    plus_di = float(latest.get('plus_di', 0))
+    minus_di = float(latest.get('minus_di', 0))
     vol_ratio = float(latest.get('vol_ratio', 0))
+    body_ratio = float(latest.get('body_ratio', 0))
+    vol_dryup = bool(latest.get('vol_dryup', False))
     consec_bull = int(latest.get('consec_bull', 0))
     consec_bear = int(latest.get('consec_bear', 0))
 
@@ -170,6 +194,13 @@ def signal_momentum_rider(df: pd.DataFrame, context: dict) -> dict:
     avg_body_dom = np.mean(doms)
     body_accel = (bodies[2] > bodies[1] > bodies[0] * 0.7)  # Growing bodies
 
+    if adx < float(cfg.get('min_adx', 20.0)):
+        return None
+    if vol_dryup:
+        return None
+    if avg_body_dom < float(cfg.get('body_dom_min', 0.40)) and body_ratio < float(cfg.get('min_body_ratio', 0.28)):
+        return None
+
     # ─── Swing-based SL ───────────────────────────────────
     lookback = cfg['sl_swing_lookback']
     recent_bars = df.iloc[-lookback-1:-1]
@@ -178,6 +209,12 @@ def signal_momentum_rider(df: pd.DataFrame, context: dict) -> dict:
     # BUY SIGNAL
     # ═══════════════════════════════════════════════════════
     if is_bull_impulse:
+        if roc <= float(cfg.get('min_roc', 0.02)):
+            return None
+        if (plus_di - minus_di) < float(cfg.get('min_di_gap', 2.5)):
+            return None
+        if cfg.get('require_body_accel', True) and not body_accel:
+            return None
         confidence = 0
         reasons = []
 
@@ -256,6 +293,12 @@ def signal_momentum_rider(df: pd.DataFrame, context: dict) -> dict:
     # SELL SIGNAL
     # ═══════════════════════════════════════════════════════
     if is_bear_impulse:
+        if roc >= -float(cfg.get('min_roc', 0.02)):
+            return None
+        if (minus_di - plus_di) < float(cfg.get('min_di_gap', 2.5)):
+            return None
+        if cfg.get('require_body_accel', True) and not body_accel:
+            return None
         confidence = 0
         reasons = []
 

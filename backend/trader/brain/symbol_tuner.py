@@ -10,12 +10,13 @@ import json
 import logging
 from typing import Dict
 
+from backend.trader.config.paths import SETTINGS_PATH
 from backend.trader.data.mapper import mapper
 from backend.trader.storage.sqlite_db import db
 
 logger = logging.getLogger("opus_logger")
 
-with open("d:/VibeCode/Trade/backend/trader/config/settings.json", "r", encoding="utf-8") as _f:
+with open(SETTINGS_PATH, "r", encoding="utf-8") as _f:
     _CFG = json.load(_f)
 
 

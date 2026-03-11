@@ -10,8 +10,10 @@ import logging
 from pathlib import Path
 from functools import lru_cache
 
+from backend.trader.config.paths import REPLAY_DB_PATH
+
 logger = logging.getLogger("opus_logger")
-DB_PATH = Path("d:/VibeCode/Trade/backend/trader/data/replay_180d.db")
+DB_PATH = Path(REPLAY_DB_PATH)
 
 class QualityFilter:
     @staticmethod

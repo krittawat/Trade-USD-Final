@@ -20,6 +20,14 @@ if sys.platform == "win32":
 PASS = "PASS"
 FAIL = "FAIL"
 results = []
+QC_ROOT = Path(__file__).resolve().parents[3]
+QC_BACKEND_ROOT = QC_ROOT / "backend"
+QC_SETTINGS_PATH = QC_ROOT / "backend" / "trader" / "config" / "settings.json"
+
+for import_root in (QC_ROOT, QC_BACKEND_ROOT):
+    import_root_str = str(import_root)
+    if import_root_str not in sys.path:
+        sys.path.insert(0, import_root_str)
 
 def check(name: str, func):
     # Mock fetcher to return fake data if called during tests
@@ -61,15 +69,14 @@ def _make_test_df(n=200):
 # 1. CONFIG VALIDATION
 # ═══════════════════════════════════════════════════════════
 def test_config_loads():
-    path = Path("d:/VibeCode/Trade/backend/trader/config/settings.json")
-    with open(path) as f:
+    with open(QC_SETTINGS_PATH, encoding="utf-8") as f:
         cfg = json.load(f)
     required_keys = ["risk_limits", "regime", "liquidity", "session_hours_utc", "symbols", "strategy"]
     missing = [k for k in required_keys if k not in cfg]
     return len(missing) == 0, f"Missing keys: {missing}" if missing else "All keys present"
 
 def test_risk_limits_valid():
-    with open("d:/VibeCode/Trade/backend/trader/config/settings.json") as f:
+    with open(QC_SETTINGS_PATH, encoding="utf-8") as f:
         cfg = json.load(f)
     rl = cfg["risk_limits"]
     ok = (
@@ -86,7 +93,10 @@ def test_volatility_features():
     from backend.trader.features.volatility import add_volatility_features
     df = _make_test_df()
     df = add_volatility_features(df)
-    required_cols = ["atr", "atr_baseline", "compression_ratio", "body_size", "body_ratio"]
+    required_cols = [
+        "atr", "atr_baseline", "compression_ratio", "body_size", "body_ratio",
+        "tick_vol_ratio", "tick_vol_ratio_slow", "buy_pressure", "sell_pressure", "volume_side"
+    ]
     missing = [c for c in required_cols if c not in df.columns]
     has_values = df["atr"].dropna().shape[0] > 50
     return len(missing) == 0 and has_values, f"Missing cols: {missing}" if missing else f"ATR computed ({df['atr'].dropna().shape[0]} valid rows)"
@@ -173,6 +183,26 @@ def test_risk_gate_allows_valid():
     result = engine.risk_gate(sig, {"equity": 1000, "daily_pnl": 0, "consecutive_losses": 0}, {"spread": 10, "is_news": False})
     return result["allowed"], "Valid signal should pass"
 
+def test_risk_gate_blocks_tick_volume_mismatch():
+    from backend.trader.risk.gate import RiskEngine
+    engine = RiskEngine()
+    sig = {"symbol": "USOIL", "side": "BUY", "sl": 70.0, "model": "USOIL_ELITE"}
+    result = engine.risk_gate(
+        sig,
+        {"equity": 1000, "daily_pnl": 0, "consecutive_losses": 0, "balance": 1000, "margin": 0, "margin_free": 1000},
+        {
+            "spread": 10,
+            "is_news": False,
+            "backtest_mode": True,
+            "vol_ratio": 1.6,
+            "tick_vol_ratio": 1.6,
+            "tick_volume_side": "SELL",
+            "tick_volume_climax": False,
+        }
+    )
+    blocked = (not result["allowed"]) and any("Tick Volume pressure" in r for r in result["reasons"])
+    return blocked, f"allowed={result['allowed']} reasons={result['reasons']}"
+
 # ═══════════════════════════════════════════════════════════
 # 6. STRATEGY PIPELINE (signal generation)
 # ═══════════════════════════════════════════════════════════
@@ -195,6 +225,32 @@ def test_strategy_selector():
     required = ["symbol", "side", "sl", "tp1", "model", "confidence"]
     missing = [k for k in required if k not in sig]
     return len(missing) == 0, f"Signal OK: {sig['side']} {sig['model']}, conf={sig['confidence']:.2f}"
+
+def test_tick_volume_gate_alignment():
+    from backend.trader.features.volatility import add_volatility_features
+    from backend.trader.strategy.tick_volume_gate import evaluate_tick_volume
+
+    df = add_volatility_features(_make_test_df(120))
+    idx = df.index[-1]
+    base_avg = float(df["tick_volume"].iloc[-21:-1].mean())
+    df.loc[idx, "open"] = float(df.loc[idx, "close"]) - 2.0
+    df.loc[idx, "high"] = float(df.loc[idx, "close"]) + 0.4
+    df.loc[idx, "low"] = float(df.loc[idx, "open"]) - 0.2
+    df.loc[idx, "close"] = float(df.loc[idx, "open"]) + 2.3
+    df.loc[idx, "tick_volume"] = int(max(5000.0, base_avg * 2.2))
+    df = add_volatility_features(df)
+
+    signal = {
+        "symbol": "XAUUSD",
+        "side": "BUY",
+        "model": "RAPID_PULLBACK",
+        "entry_price": float(df.iloc[-1]["close"]),
+        "sl": float(df.iloc[-1]["close"] - 5.0),
+        "tp1": float(df.iloc[-1]["close"] + 10.0),
+    }
+    result = evaluate_tick_volume(df, signal, {})
+    ok = result.allowed and result.confidence_delta > 0 and result.state in {"ALIGNED", "STRONG_ALIGNMENT"}
+    return ok, f"allowed={result.allowed}, delta={result.confidence_delta:.2f}, state={result.state}, reason={result.reason}"
 
 # ═══════════════════════════════════════════════════════════
 # 7. SQLITE STORAGE
@@ -308,7 +364,7 @@ def test_atr_deviation_cooldown():
 
 def test_pyramid_risk_limits():
     """Pyramid config must have addon risk <= 0.3R and total <= 2%."""
-    with open("d:/VibeCode/Trade/backend/trader/config/settings.json") as f:
+    with open(QC_SETTINGS_PATH, encoding="utf-8") as f:
         cfg = json.load(f)
     pyramid = cfg.get("strategy", {}).get("pyramid", {})
     ok = (
@@ -489,9 +545,11 @@ def main():
     check("Blocks after 3 consecutive losses", test_risk_gate_blocks_consecutive_losses)
     check("Blocks during news window", test_risk_gate_blocks_news)
     check("Allows valid signal", test_risk_gate_allows_valid)
+    check("Blocks opposing tick-volume pressure", test_risk_gate_blocks_tick_volume_mismatch)
 
     print("\n[6/9] Strategy Pipeline")
     check("Full pipeline signal generation", test_strategy_selector)
+    check("Tick volume gate aligns high-volume entries", test_tick_volume_gate_alignment)
 
     print("\n[7/9] SQLite Storage")
     check("SQLite CRUD operations", test_sqlite_storage)
@@ -536,9 +594,6 @@ def main():
     return pct == 100
 
 if __name__ == "__main__":
-    # Add project root to path
-    sys.path.insert(0, "d:/VibeCode/Trade")
-    sys.path.insert(0, "d:/VibeCode/Trade/backend")
     success = main()
     sys.exit(0 if success else 1)
 

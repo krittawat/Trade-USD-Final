@@ -8,7 +8,7 @@ Features:
 - Uses same pipeline as live (single source of truth)
 
 Usage:
-  cd D:\VibeCode\Trade
+  cd D:\\VibeCode\\Trade
   python -m backend.trader.scripts.run_backtest --symbol XAUUSD --bars 25920
 """
 import sys
@@ -22,6 +22,7 @@ import json
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta, timezone
+from typing import Dict
 from backend.trader.features.volatility import add_volatility_features
 from backend.trader.features.structure import add_structure_features, detect_displacement
 from backend.trader.features.institutional import add_institutional_features
@@ -42,20 +43,96 @@ with open("d:/VibeCode/Trade/backend/trader/config/settings.json") as f:
 
 risk_engine = RiskEngine()
 
-# --- Symbol-specific contract specs (Exness Standard USD) ---
+
+def load_strategy_params_arg(raw: str | None, strategy_mode: str = "all") -> dict:
+    text = str(raw or "").strip()
+    if not text:
+        return {}
+
+    payload = text
+    candidate = Path(text)
+    if candidate.exists() and candidate.is_file():
+        payload = candidate.read_text(encoding="utf-8")
+
+    data = json.loads(payload)
+    if not isinstance(data, dict):
+        raise ValueError("strategy params must decode to a JSON object")
+
+    mode = str(strategy_mode or "all").strip().lower()
+    if mode and mode != "all" and mode not in data:
+        scalar_values = all(not isinstance(v, dict) for v in data.values())
+        if scalar_values:
+            return {mode: data}
+    return data
+
+# --- Symbol-specific contract specs / strategy profiles ---
 SYMBOL_SPECS = {
-    "XAUUSD": {"point_value_per_lot": 1.0, "spread_points": 30, "contract_size": 100},
-    "XAGUSD": {"point_value_per_lot": 0.5, "spread_points": 30, "contract_size": 5000},
-    "BTCUSD": {"point_value_per_lot": 0.01, "spread_points": 500, "contract_size": 1},
-    "UKOIL": {"point_value_per_lot": 0.01, "spread_points": 50, "contract_size": 1000},
+    "XAUUSD": {"point_value_per_lot": 1.0, "spread_points": 30, "contract_size": 100.0, "point": 0.01, "tick_size": 0.01, "volume_min": 0.01, "volume_step": 0.01},
+    "XAGUSD": {"point_value_per_lot": 5.0, "spread_points": 30, "contract_size": 5000.0, "point": 0.001, "tick_size": 0.001, "volume_min": 0.01, "volume_step": 0.01},
+    "BTCUSD": {"point_value_per_lot": 1.0, "spread_points": 500, "contract_size": 1.0, "point": 1.0, "tick_size": 1.0, "volume_min": 0.01, "volume_step": 0.01},
+    "USOIL": {"point_value_per_lot": 1.0, "spread_points": 50, "contract_size": 1000.0, "point": 0.001, "tick_size": 0.001, "volume_min": 0.01, "volume_step": 0.01},
+    "UKOIL": {"point_value_per_lot": 1.0, "spread_points": 50, "contract_size": 1000.0, "point": 0.001, "tick_size": 0.001, "volume_min": 0.01, "volume_step": 0.01},
+    "US30": {"point_value_per_lot": 1.0, "spread_points": 120, "contract_size": 1.0, "point": 1.0, "tick_size": 1.0, "volume_min": 0.01, "volume_step": 0.01},
+    "USTEC": {"point_value_per_lot": 1.0, "spread_points": 160, "contract_size": 1.0, "point": 0.1, "tick_size": 0.1, "volume_min": 0.01, "volume_step": 0.01},
+    "EURUSD": {"point_value_per_lot": 10.0, "spread_points": 18, "contract_size": 100000.0, "point": 0.00001, "tick_size": 0.00001, "volume_min": 0.01, "volume_step": 0.01},
+    "GBPUSD": {"point_value_per_lot": 10.0, "spread_points": 22, "contract_size": 100000.0, "point": 0.00001, "tick_size": 0.00001, "volume_min": 0.01, "volume_step": 0.01},
+    "USDJPY": {"point_value_per_lot": 9.0, "spread_points": 18, "contract_size": 100000.0, "point": 0.001, "tick_size": 0.001, "volume_min": 0.01, "volume_step": 0.01},
 }
 
 REALISTIC_SPREAD_CAP = {
     "XAUUSD": 50,
     "XAGUSD": 80,
     "BTCUSD": 800,
+    "USOIL": 100,
     "UKOIL": 100,
+    "US30": 250,
+    "USTEC": 300,
+    "EURUSD": 35,
+    "GBPUSD": 45,
+    "USDJPY": 35,
 }
+
+STRATEGY_PRESETS = {
+    "all": {"whitelist": None, "force_enabled_models": [], "min_confidence": 0.62, "profile": "all"},
+    "momentum": {
+        "whitelist": ["MOMENTUM_RIDER", "MOMENTUM_SCALPER_V2", "USOIL_MOMENTUM"],
+        "force_enabled_models": ["MOMENTUM_RIDER", "MOMENTUM_SCALPER_V2", "USOIL_MOMENTUM"],
+        "min_confidence": 0.70,
+        "profile": "momentum",
+    },
+    "rapid_pullback": {
+        "whitelist": ["RAPID_PULLBACK"],
+        "force_enabled_models": ["RAPID_PULLBACK"],
+        "min_confidence": 0.62,
+        "profile": "rapid_pullback",
+    },
+    "indicator_confluence": {
+        "whitelist": ["INDICATOR_CONFLUENCE"],
+        "force_enabled_models": ["INDICATOR_CONFLUENCE"],
+        "min_confidence": 0.62,
+        "profile": "indicator_confluence",
+    },
+    "momentum_rider": {
+        "whitelist": ["MOMENTUM_RIDER"],
+        "force_enabled_models": ["MOMENTUM_RIDER"],
+        "min_confidence": 0.70,
+        "profile": "momentum_rider",
+    },
+    "momentum_scalper_v2": {
+        "whitelist": ["MOMENTUM_SCALPER_V2"],
+        "force_enabled_models": ["MOMENTUM_SCALPER_V2"],
+        "min_confidence": 0.70,
+        "profile": "momentum_scalper_v2",
+    },
+    "usoil_momentum": {
+        "whitelist": ["USOIL_MOMENTUM"],
+        "force_enabled_models": ["USOIL_MOMENTUM"],
+        "min_confidence": 0.70,
+        "profile": "usoil_momentum",
+    },
+}
+
+_SYMBOL_DETAIL_CACHE: Dict[str, dict] = {}
 
 TIMEFRAME_MAP = {
     "M1": "TIMEFRAME_M1",
@@ -79,27 +156,107 @@ TIMEFRAME_MAP = {
     "D1": "TIMEFRAME_D1",
 }
 
-def _fetch_mt5_spread(symbol: str) -> int:
+def _normalize_symbol_key(symbol: str) -> str:
+    from backend.trader.data.mapper import mapper
+
+    raw = str(mapper.to_standard(str(symbol or "").strip()) or symbol or "").upper()
+    if raw.endswith(("M", "C")) and raw[:-1] in SYMBOL_SPECS:
+        raw = raw[:-1]
+    if "XAU" in raw:
+        return "XAUUSD"
+    if "XAG" in raw:
+        return "XAGUSD"
+    if "BTC" in raw:
+        return "BTCUSD"
+    if "OIL" in raw:
+        return "USOIL"
+    if "30" in raw:
+        return "US30"
+    if "TEC" in raw or "NAS" in raw:
+        return "USTEC"
+    return raw
+
+
+def _resolve_strategy_controls(strategy_mode: str) -> dict:
+    key = str(strategy_mode or "all").strip().lower()
+    return dict(STRATEGY_PRESETS.get(key, STRATEGY_PRESETS["all"]))
+
+
+def _fetch_mt5_symbol_details(symbol: str) -> dict:
+    cache_key = _normalize_symbol_key(symbol)
+    cached = _SYMBOL_DETAIL_CACHE.get(cache_key)
+    if cached is not None:
+        return dict(cached)
+
     try:
         import MetaTrader5 as mt5
         from backend.trader.data.mapper import mapper
         if not mt5.initialize():
-            return None
+            return {}
         broker_sym = mapper.to_broker(symbol)
         info = mt5.symbol_info(broker_sym)
         if info is not None:
-            real_spread = info.spread
-            print(f"  [MT5] real spread for {broker_sym}: {real_spread} points")
-            return real_spread
+            details = {
+                "broker_symbol": broker_sym,
+                "spread_points": int(getattr(info, "spread", 0) or 0),
+                "point": float(getattr(info, "point", 0.0) or 0.0),
+                "tick_size": float(getattr(info, "trade_tick_size", 0.0) or getattr(info, "point", 0.0) or 0.0),
+                "point_value_per_lot": float(getattr(info, "trade_tick_value", 0.0) or 0.0),
+                "contract_size": float(getattr(info, "trade_contract_size", 0.0) or 0.0),
+                "volume_min": float(getattr(info, "volume_min", 0.01) or 0.01),
+                "volume_step": float(getattr(info, "volume_step", 0.01) or 0.01),
+            }
+            print(f"  [MT5] symbol details for {broker_sym}: spread={details['spread_points']} point={details['point']} tick_size={details['tick_size']}")
+            _SYMBOL_DETAIL_CACHE[cache_key] = dict(details)
+            return details
     except Exception:
         pass
-    return None
+    _SYMBOL_DETAIL_CACHE[cache_key] = {}
+    return {}
+
+
+def _resolve_symbol_specs(symbol: str) -> dict:
+    symbol_key = _normalize_symbol_key(symbol)
+    specs = dict(SYMBOL_SPECS.get(symbol_key, SYMBOL_SPECS["XAUUSD"]))
+    mt5_details = _fetch_mt5_symbol_details(symbol)
+    if mt5_details:
+        for field in ["point", "tick_size", "point_value_per_lot", "contract_size", "volume_min", "volume_step"]:
+            if float(mt5_details.get(field, 0.0) or 0.0) > 0.0:
+                specs[field] = float(mt5_details[field])
+
+        real_spread = int(mt5_details.get("spread_points", 0) or 0)
+        realistic_cap = REALISTIC_SPREAD_CAP.get(symbol_key, 100)
+        if real_spread > 0:
+            if real_spread <= realistic_cap:
+                specs["spread_points"] = real_spread
+                print(f"  [OK] Using MT5 real spread: {real_spread} points")
+            else:
+                specs["spread_points"] = realistic_cap
+                print(f"  [WARN] MT5 spread {real_spread}pts is off-session inflated -> capped to {realistic_cap}pts")
+    else:
+        print(f"  [WARN] Using fallback spread: {specs['spread_points']} points")
+
+    specs.setdefault("point", specs.get("tick_size", 0.01) or 0.01)
+    specs.setdefault("tick_size", specs.get("point", 0.01) or 0.01)
+    specs.setdefault("volume_min", 0.01)
+    specs.setdefault("volume_step", 0.01)
+    return specs
 
 # --- Backtest Core ---
 class BacktestEngine:
-    def __init__(self, symbol: str, initial_equity: float = 1000.0):
+    def __init__(
+        self,
+        symbol: str,
+        initial_equity: float = 1000.0,
+        timeframe: str = "M5",
+        strategy_mode: str = "all",
+        brain_params: dict | None = None,
+    ):
         self.symbol = symbol
+        self.standard_symbol = _normalize_symbol_key(symbol)
         self.initial_equity = initial_equity
+        self.timeframe = str(timeframe or "M5").upper()
+        self.strategy_mode = str(strategy_mode or "all").lower()
         self.equity = initial_equity
         self.peak_equity = initial_equity
         self.trades = []
@@ -110,20 +267,9 @@ class BacktestEngine:
         self.lot_multiplier = 1.0
         self.config = CONFIG
         self._block_reasons = {}
-        self.specs = SYMBOL_SPECS.get(symbol, SYMBOL_SPECS["XAUUSD"]).copy()
-
-        mt5_spread = _fetch_mt5_spread(symbol)
-        realistic_cap = REALISTIC_SPREAD_CAP.get(symbol, 100)
-        
-        if mt5_spread is not None:
-            if mt5_spread <= realistic_cap:
-                self.specs["spread_points"] = mt5_spread
-                print(f"  [OK] Using MT5 real spread: {mt5_spread} points")
-            else:
-                self.specs["spread_points"] = realistic_cap
-                print(f"  [WARN] MT5 spread {mt5_spread}pts is off-session inflated -> capped to {realistic_cap}pts")
-        else:
-            print(f"  [WARN] Using fallback spread: {self.specs['spread_points']} points")
+        self.strategy_controls = _resolve_strategy_controls(self.strategy_mode)
+        self.specs = _resolve_symbol_specs(symbol)
+        self.brain_params = dict(brain_params or {})
 
     def _calculate_lot(self, signal: dict) -> float:
         # Dynamic lot sizing matching main.py logic
@@ -141,9 +287,10 @@ class BacktestEngine:
         effective_risk = dynamic_risk_pct * self.lot_multiplier
         
         # Symbol specifics
-        tick_value = self.specs.get("point_value_per_lot", 1.0)
-        tick_size = 0.01 if "XAU" in self.symbol or "XAG" in self.symbol else 1.0 
-        if "BTC" in self.symbol: tick_size = 1.0
+        tick_value = float(self.specs.get("point_value_per_lot", 1.0) or 1.0)
+        tick_size = float(self.specs.get("tick_size", self.specs.get("point", 0.01)) or 0.01)
+        volume_min = float(self.specs.get("volume_min", 0.01) or 0.01)
+        volume_step = float(self.specs.get("volume_step", 0.01) or 0.01)
         
         # Check tiered scaling
         tiered_cfg = CONFIG.get("tiered_scaling", {})
@@ -151,15 +298,20 @@ class BacktestEngine:
         if tiered_cfg.get("enabled", False):
             for tier in reversed(tiered_cfg.get("tiers", [])):
                 if self.equity >= tier.get("min_equity", 0):
-                    max_lot_allowed = tier.get(f"max_lot_{self.symbol}", 0.05)
+                    max_lot_allowed = (
+                        tier.get(f"max_lot_{self.symbol}")
+                        or tier.get(f"max_lot_{self.standard_symbol}")
+                        or tier.get(f"max_lot_{self.standard_symbol}m")
+                        or 0.05
+                    )
                     break
         
         raw_lot = compute_lot_size(
             self.equity, effective_risk, sl_dist,
             tick_value=tick_value, tick_size=tick_size,
-            volume_min=0.01, volume_step=0.01
+            volume_min=volume_min, volume_step=volume_step
         )
-        lot = max(0.01, round(raw_lot, 2))
+        lot = max(volume_min, round(raw_lot, 2))
         return min(lot, max_lot_allowed)
 
     def simulate_trade(self, signal: dict, future_bars: pd.DataFrame) -> dict:
@@ -167,7 +319,7 @@ class BacktestEngine:
         sl = signal["sl"]
         tp1 = signal["tp1"]
         side = signal["side"]
-        spread_cost = self.specs["spread_points"] * 0.01
+        spread_cost = float(self.specs.get("spread_points", 0.0) or 0.0) * float(self.specs.get("point", 0.01) or 0.01)
 
         for _, bar in future_bars.iterrows():
             if side == "BUY":
@@ -198,6 +350,7 @@ class BacktestEngine:
         print(f"\n{'='*60}")
         print(f"  OPUS Backtest V2 - {self.symbol}")
         print(f"  Bars: {len(df)} | Lookback: {lookback} | Hold: {hold_bars}")
+        print(f"  Timeframe: {self.timeframe} | Strategy: {self.strategy_mode}")
         print(f"  Initial Equity: ${self.initial_equity:.2f}")
         print(f"  Spread sim: {self.specs['spread_points']} points")
         print(f"{'='*60}\n")
@@ -217,12 +370,43 @@ class BacktestEngine:
         blocked_signals = 0
         regime_cfg = CONFIG.get("regime", {})
         liq_cfg = CONFIG.get("liquidity", {})
+        strategy_whitelist = self.strategy_controls.get("whitelist")
+        force_enabled_models = self.strategy_controls.get("force_enabled_models", [])
+        strategy_eval_min_confidence = float(self.strategy_controls.get("min_confidence", 0.62) or 0.62)
+        strategy_profile = str(self.strategy_controls.get("profile", self.strategy_mode))
 
         for i in range(lookback, len(df) - hold_bars):
             window = df.iloc[i - lookback: i]
             regime_res = classify_regime(window, regime_cfg)
             events = detect_liquidity_events(window, liq_cfg)
-            context = {"symbol": self.symbol, "regime_result": regime_res}
+            row_now = df.iloc[i]
+            session_label = str(row_now.get("session", "")).upper().strip()
+            if not session_label:
+                try:
+                    ts = pd.Timestamp(row_now.get("time"))
+                    if ts.tzinfo is None:
+                        ts = ts.tz_localize("UTC")
+                    session_label = time_utils.assign_session(ts.to_pydatetime())
+                except Exception:
+                    session_label = "UNKNOWN"
+            context = {
+                "symbol": self.symbol,
+                "timeframe": self.timeframe,
+                "regime_result": regime_res,
+                "session": session_label,
+                "current_session": session_label,
+                "backtest_mode": True,
+                "current_time": row_now.get("time"),
+                "strategy_profile": strategy_profile,
+            }
+            if strategy_whitelist:
+                context["strategy_whitelist"] = strategy_whitelist
+                context["strategy_eval_mode"] = True
+                context["strategy_eval_min_confidence"] = strategy_eval_min_confidence
+            if force_enabled_models:
+                context["force_enabled_models"] = list(force_enabled_models)
+            if self.brain_params:
+                context["brain_params"] = self.brain_params
             signal = select_and_generate_signal(window, context, events, current_bar=i)
 
             if signal is None:
@@ -257,7 +441,12 @@ class BacktestEngine:
                 "equity": self.equity, "daily_pnl": self.daily_pnl,
                 "consecutive_losses": self.consecutive_losses
             }
-            market_state = {"spread": self.specs["spread_points"], "is_news": False}
+            market_state = {
+                "spread": self.specs["spread_points"],
+                "is_news": False,
+                "vol_ratio": float(window.iloc[-1].get("vol_ratio", 1.0) or 1.0),
+                "backtest_mode": True,
+            }
             gate = risk_engine.risk_gate(signal, account_state, market_state)
 
             if not gate["allowed"]:
@@ -401,13 +590,44 @@ def main():
     parser.add_argument("--symbol", default="XAUUSD")
     parser.add_argument("--bars", type=int, default=2000)
     parser.add_argument("--timeframe", default="M5")
+    parser.add_argument(
+        "--strategy",
+        default="all",
+        choices=[
+            "all",
+            "momentum",
+            "momentum_rider",
+            "momentum_scalper_v2",
+            "usoil_momentum",
+            "rapid_pullback",
+            "indicator_confluence",
+        ],
+        help="Backtest all selector models or force a single model.",
+    )
     parser.add_argument("--days", type=int, default=0, help="If >0, fetch by days instead of bars")
     parser.add_argument("--equity", type=float, default=100.0)
+    parser.add_argument(
+        "--strategy-params-json",
+        default="",
+        help="JSON object or path to JSON file with brain_params overrides for the selected strategy.",
+    )
     args = parser.parse_args()
     df = load_mt5_data(args.symbol, args.bars, timeframe=args.timeframe, days=args.days)
-    engine = BacktestEngine(symbol=args.symbol, initial_equity=args.equity)
+    try:
+        strategy_params = load_strategy_params_arg(args.strategy_params_json, args.strategy)
+    except Exception as e:
+        print(f"[ERR] invalid --strategy-params-json: {e}")
+        return 2
+    engine = BacktestEngine(
+        symbol=args.symbol,
+        initial_equity=args.equity,
+        timeframe=args.timeframe,
+        strategy_mode=args.strategy,
+        brain_params=strategy_params,
+    )
     metrics = engine.run(df)
-    suffix = f"{args.timeframe.upper()}_{args.days}d" if args.days and args.days > 0 else f"{args.timeframe.upper()}_{args.bars}b"
+    suffix_base = f"{args.timeframe.upper()}_{args.days}d" if args.days and args.days > 0 else f"{args.timeframe.upper()}_{args.bars}b"
+    suffix = f"{args.strategy}_{suffix_base}"
     results_path = f"d:/VibeCode/Trade/backend/trader/data/backtest_{args.symbol}_{suffix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     with open(results_path, "w") as f:
         json.dump(metrics, f, indent=2)

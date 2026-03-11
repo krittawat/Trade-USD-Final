@@ -3,10 +3,12 @@ import pandas as pd
 import pytz
 import json
 
+from backend.trader.config.paths import SETTINGS_PATH
+
 class TimeUtils:
-    def __init__(self, config_path: str = "d:/VibeCode/Trade/backend/trader/config/settings.json"):
+    def __init__(self, config_path=SETTINGS_PATH):
         try:
-            with open(config_path, 'r') as f:
+            with open(config_path, "r", encoding="utf-8") as f:
                 config = json.load(f)
             self.session_hours = config.get("session_hours_utc", {})
         except FileNotFoundError:

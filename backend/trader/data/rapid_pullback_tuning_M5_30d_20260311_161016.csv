@@ -1,0 +1,2 @@
+symbol,timeframe,days,strict_pass,lookback,touch_atr,sl_buffer_atr,tp1_rr,min_body_ratio,min_vol_ratio,min_roc,min_di_gap,trades,win_rate,profit_factor,net_pnl,max_dd,pf_delta,net_pnl_delta
+XAUUSD,M5,30,False,4,0.28,0.16,1.2,0.28,0.92,0.04,1.0,3,0.0,0.0,-34.2829,3.428,-0.585,5.1669

@@ -32,8 +32,10 @@ from backend.trader.features.volatility import add_volatility_features
 from backend.trader.regime.classifier import classify_regime
 from backend.trader.scripts.run_backtest import (
     BacktestEngine,
+    CONFIG as TRADER_CONFIG,
     SYMBOL_SPECS,
     load_mt5_data,
+    load_strategy_params_arg,
     risk_engine,
 )
 from backend.trader.storage.sqlite_db import db
@@ -43,14 +45,21 @@ from backend.trader.storage.sqlite_db import db
 logging.disable(logging.INFO)
 
 
-BASE_SYMBOLS = [
-    "XAUUSDm",
-    "BTCUSDm",
-    "USOILm",
-    "US30m",
-    "USTECm",
-]
-SHADOW_SYMBOLS = ["XAGUSDm"]
+def _configured_broker_symbols() -> List[str]:
+    raw = list((TRADER_CONFIG.get("symbols", {}) or {}).values())
+    seen = set()
+    out = []
+    for sym in raw:
+        key = str(sym or "").upper().strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(str(sym))
+    return out
+
+
+BASE_SYMBOLS = _configured_broker_symbols()
+SHADOW_SYMBOLS: List[str] = []
 DEFAULT_TIMEFRAMES = ["M3", "M5", "M6", "M12", "M15", "M30", "H1", "H2", "H4", "D1"]
 
 
@@ -258,7 +267,7 @@ class AppFactoryBacktestEngine:
         sl = float(signal["sl"])
         tp1 = float(signal["tp1"])
         side = str(signal["side"]).upper()
-        spread_cost = float(self.specs.get("spread_points", 30)) * 0.01
+        spread_cost = float(self.specs.get("spread_points", 30) or 0.0) * float(self.specs.get("point", 0.01) or 0.01)
 
         for _, bar in future_bars.iterrows():
             if side == "BUY":
@@ -399,7 +408,11 @@ class AppFactoryBacktestEngine:
                 "daily_pnl": self.daily_pnl,
                 "consecutive_losses": self.consecutive_losses,
             }
-            market_state = {"spread": self.specs.get("spread_points", 30), "is_news": False}
+            market_state = {
+                "spread": self.specs.get("spread_points", 30),
+                "is_news": False,
+                "backtest_mode": True,
+            }
             gate = risk_engine.risk_gate(signal, account_state, market_state)
             if not gate.get("allowed", False):
                 blocked_signals += 1
@@ -478,9 +491,15 @@ class AppFactoryBacktestEngine:
         }
 
 
-def _run_trader_engine(df: pd.DataFrame, symbol: str, args) -> dict:
+def _run_trader_engine(df: pd.DataFrame, symbol: str, timeframe: str, args) -> dict:
     run_equity = float(getattr(args, "_effective_equity", args.equity))
-    engine = BacktestEngine(symbol=symbol, initial_equity=run_equity)
+    engine = BacktestEngine(
+        symbol=symbol,
+        initial_equity=run_equity,
+        timeframe=timeframe,
+        strategy_mode=getattr(args, "strategy", "all"),
+        brain_params=getattr(args, "_strategy_params", {}),
+    )
     return engine.run(df, lookback=args.lookback, hold_bars=args.hold_bars)
 
 
@@ -513,6 +532,25 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run 360D backtest matrix and persist TF overrides")
     parser.add_argument("--days", type=int, default=360, help="Backtest window in days")
     parser.add_argument("--equity", type=float, default=300.0, help="Initial equity")
+    parser.add_argument(
+        "--strategy",
+        choices=[
+            "all",
+            "momentum",
+            "momentum_rider",
+            "momentum_scalper_v2",
+            "usoil_momentum",
+            "rapid_pullback",
+            "indicator_confluence",
+        ],
+        default="all",
+        help="Trader-engine selector profile to run across the matrix.",
+    )
+    parser.add_argument(
+        "--strategy-params-json",
+        default="",
+        help="JSON object or path to JSON file with brain_params overrides for the selected strategy.",
+    )
     parser.add_argument("--lookback", type=int, default=100, help="Engine lookback bars")
     parser.add_argument("--hold-bars", type=int, default=50, help="Engine hold bars")
     parser.add_argument("--min-trades", type=int, default=5, help="Minimum trades for reliable ranking")
@@ -552,9 +590,9 @@ def main() -> int:
     )
     parser.add_argument("--prune-days", type=int, default=180, help="Prune override runs older than N days")
     parser.add_argument("--prod-min-trades", type=int, default=3, help="Production gate: minimum trades")
-    parser.add_argument("--prod-min-win-rate", type=float, default=35.0, help="Production gate: minimum win rate (%)")
+    parser.add_argument("--prod-min-win-rate", type=float, default=35.0, help="Production gate: minimum win rate (%%)")
     parser.add_argument("--prod-min-pf", type=float, default=1.05, help="Production gate: minimum profit factor")
-    parser.add_argument("--prod-max-dd", type=float, default=25.0, help="Production gate: maximum drawdown (%)")
+    parser.add_argument("--prod-max-dd", type=float, default=25.0, help="Production gate: maximum drawdown (%%)")
     parser.add_argument("--prod-min-score", type=float, default=0.0, help="Production gate: minimum score")
     parser.add_argument(
         "--prod-require-positive-pnl",
@@ -570,6 +608,14 @@ def main() -> int:
         help="Production gate: allow net_pnl <= 0",
     )
     args = parser.parse_args()
+    try:
+        args._strategy_params = load_strategy_params_arg(getattr(args, "strategy_params_json", ""), getattr(args, "strategy", "all"))
+    except Exception as e:
+        print(f"[ERR] invalid --strategy-params-json: {e}")
+        return 2
+    if args.strategy != "all" and args.engine != "trader":
+        print(f"[INFO] strategy={args.strategy} is trader-selector specific -> forcing --engine trader")
+        args.engine = "trader"
     requested_equity = float(args.equity)
     equity_floor = float(max(0.0, args.optimize_equity_floor))
     effective_equity = max(requested_equity, equity_floor) if equity_floor > 0 else requested_equity
@@ -613,7 +659,7 @@ def main() -> int:
     print("=" * 100)
     print(
         f"Backtest Matrix Start | run_id={run_id} | days={args.days} | symbols={len(symbols)} | "
-        f"tfs={len(timeframes)} | engines={','.join(engines)}"
+        f"tfs={len(timeframes)} | engines={','.join(engines)} | strategy={args.strategy}"
     )
     print(f"Data source: {args.data_source}{f' ({Path(args.duckdb_path).resolve()})' if args.data_source in {'auto','duckdb'} else ''}")
     print(
@@ -653,7 +699,7 @@ def main() -> int:
                     print(f"\n[{job_idx}/{total_jobs}] {symbol} {tf} engine={engine_name}")
                     try:
                         if engine_name == "trader":
-                            metrics = _run_trader_engine(df, symbol, args)
+                            metrics = _run_trader_engine(df, symbol, tf, args)
                         else:
                             metrics = _run_app_engine(df, symbol, args)
 
@@ -661,6 +707,7 @@ def main() -> int:
                         rec["symbol"] = symbol
                         rec["timeframe"] = tf
                         rec["engine"] = engine_name
+                        rec["strategy"] = args.strategy if engine_name == "trader" else "app_factory"
                         rec["bars_used"] = len(df)
                         rec["bars_raw"] = raw_bars
                         rec["truncated"] = truncated
@@ -705,6 +752,7 @@ def main() -> int:
         "generated_at": datetime.now(UTC).isoformat(),
         "run_id": run_id,
         "engine": args.engine,
+        "strategy": args.strategy,
         "days": args.days,
         "requested_equity": requested_equity,
         "effective_equity": effective_equity,

@@ -10,32 +10,28 @@ import json
 import MetaTrader5 as mt5
 import logging
 import datetime as dt
-from datetime import timedelta
+import math
+from backend.trader.config.paths import SETTINGS_PATH
 from backend.trader.data.mapper import mapper
 from backend.trader.data.fetcher import fetcher
+from backend.trader.execution.terminal_guard import log_trade_block
+from backend.trader.execution.trailing_policy import (
+    base_stop_distance,
+    build_trailing_config,
+    compute_trailing_stop,
+)
 from backend.trader.features.volatility import compute_atr
+from backend.trader.risk.mt5_history import currency_loss_limit_to_dd_pct
 
 logger = logging.getLogger("opus_logger")
 
 # Load config
-with open("d:/VibeCode/Trade/backend/trader/config/settings.json") as _f:
+with open(SETTINGS_PATH, encoding="utf-8") as _f:
     _CFG = json.load(_f)
     _STRATEGY_CFG = _CFG.get("strategy", {})
     _RISK_CFG = _CFG.get("risk_limits", {})
 
-# Trailing Stop Config (dynamic, ATR-based)
-TRAIL_CONFIG = {
-    "atr_multiplier": 2.5,    # Ghost Protocol: 2.5x ATR base
-    "ghost_buffer_pct": 0.20,  # +20% extra buffer on top (total ~3x ATR)
-    "activation_r": 2.0,      # Relaxed: Start trailing after +2.0R profit (was 1.2R — allow breathing room)
-    "lock_tiers": [            # Profit lock tiers
-        {"r_multiple": 1.2, "lock_pct": 0.4},   # At +1.2R → lock 40% of profit (was 0.8R/50%)
-        {"r_multiple": 1.5, "lock_pct": 0.6},   # At +1.5R → lock 60%
-        {"r_multiple": 2.0, "lock_pct": 0.85},  # At +2.0R → lock 85%
-        {"r_multiple": 3.0, "lock_pct": 0.95},  # At +3.0R → lock 95% (new tier)
-    ],
-    "min_sl_move": 0.5,       # Min points to move SL (avoid spam)
-}
+TRAIL_CONFIG = build_trailing_config(_STRATEGY_CFG.get("trailing_stop", {}))
 
 # Micro-Pyramid Config (V2)
 PYRAMID_CFG = _STRATEGY_CFG.get("pyramid", {})
@@ -59,6 +55,57 @@ _pyramid_count: dict = {}
 _partial_close_done: dict = {}
 
 
+def _normalize_price(value: float, symbol_info) -> float:
+    price = float(value or 0.0)
+    if symbol_info is None:
+        return price
+    digits = int(getattr(symbol_info, "digits", 2) or 2)
+    tick_size = float(
+        getattr(symbol_info, "trade_tick_size", 0.0)
+        or getattr(symbol_info, "point", 0.0)
+        or 0.0
+    )
+    if tick_size > 0:
+        return float(round(round(price / tick_size) * tick_size, digits))
+    return float(round(price, digits))
+
+
+def _format_price(value: float, symbol_info) -> str:
+    normalized = _normalize_price(value, symbol_info)
+    digits = int(getattr(symbol_info, "digits", 2) or 2) if symbol_info is not None else 2
+    return f"{normalized:.{digits}f}"
+
+
+def _round_volume_down(value: float, symbol_info) -> float:
+    volume = float(value or 0.0)
+    if symbol_info is None:
+        return max(0.0, round(volume, 2))
+    step = float(getattr(symbol_info, "volume_step", 0.01) or 0.01)
+    if step <= 0:
+        return max(0.0, round(volume, 2))
+    rounded = math.floor(volume / step) * step
+    return float(round(max(0.0, rounded), 8))
+
+
+def _resolve_min_sl_move(standard_symbol: str, atr: float, symbol_info, cfg: dict) -> float:
+    overrides = (cfg.get("min_sl_move_by_symbol", {}) or {}) if isinstance(cfg, dict) else {}
+    override_value = float(overrides.get(standard_symbol, 0.0) or 0.0)
+
+    point = float(getattr(symbol_info, "point", 0.0) or 0.0)
+    stops_level = float(getattr(symbol_info, "trade_stops_level", 0.0) or 0.0)
+    point_floor = max(point * 5.0, point * stops_level, point)
+
+    if override_value > 0:
+        return float(max(point_floor, override_value))
+
+    configured = float(cfg.get("min_sl_move", 0.0) or 0.0) if isinstance(cfg, dict) else 0.0
+    atr_scaled = base_stop_distance(atr, cfg) * 0.20 if atr > 0 else 0.0
+    candidates = [value for value in (configured, atr_scaled) if value > 0]
+    if not candidates:
+        return float(point_floor)
+    return float(max(point_floor, min(candidates)))
+
+
 def get_atr_for_symbol(symbol: str, timeframe=None) -> float:
     """Fetch current ATR for a symbol from live data."""
     if timeframe is None:
@@ -71,39 +118,52 @@ def get_atr_for_symbol(symbol: str, timeframe=None) -> float:
     return float(atr) if atr == atr else 0  # NaN check
 
 
-def compute_anti_stophunt_sl(entry: float, side: str, atr: float) -> float:
+def _get_symbol_max_sl_distance(standard_symbol: str, atr: float) -> float:
+    abs_caps = _RISK_CFG.get("max_sl_distance_abs", {}) or {}
+    atr_caps = _RISK_CFG.get("max_sl_atr_multiplier", {}) or {}
+
+    abs_cap = float(abs_caps.get(standard_symbol, 0.0) or 0.0)
+    atr_mult = float(atr_caps.get(standard_symbol, 0.0) or 0.0)
+
+    caps = []
+    if abs_cap > 0:
+        caps.append(abs_cap)
+    if atr > 0 and atr_mult > 0:
+        caps.append(atr * atr_mult)
+    if not caps:
+        return 0.0
+    return float(min(caps))
+
+
+def compute_anti_stophunt_sl(entry: float, side: str, atr: float, symbol_info=None) -> float:
     """
     Ghost Protocol Anti-Stophunt SL:
     Base = 2.5x ATR + 20% ghost buffer = effective ~3x ATR
     Smart money hunts at 1x-2x ATR. We hide SL beyond that zone.
     """
-    mult = TRAIL_CONFIG["atr_multiplier"]
-    ghost = TRAIL_CONFIG["ghost_buffer_pct"]
-    total_distance = atr * mult * (1 + ghost)  # 2.5 * 1.2 = 3.0x ATR
+    total_distance = base_stop_distance(atr, TRAIL_CONFIG)
     if side == "BUY":
-        return round(entry - total_distance, 2)
-    else:
-        return round(entry + total_distance, 2)
+        return _normalize_price(entry - total_distance, symbol_info)
+    return _normalize_price(entry + total_distance, symbol_info)
 
 
-def compute_atr_tp(entry: float, side: str, atr: float) -> dict:
+def compute_atr_tp(entry: float, side: str, atr: float, symbol_info=None) -> dict:
     """
     ATR-based TP levels: TP1=1.5R, TP2=3.0R, TP3=5.0R
     Uses the anti-stophunt SL distance as 1R.
     """
-    risk = atr * TRAIL_CONFIG["atr_multiplier"]
+    risk = base_stop_distance(atr, TRAIL_CONFIG)
     if side == "BUY":
         return {
-            "tp1": round(entry + (risk * 1.5), 2),
-            "tp2": round(entry + (risk * 3.0), 2),
-            "tp3": round(entry + (risk * 5.0), 2),
+            "tp1": _normalize_price(entry + (risk * 1.5), symbol_info),
+            "tp2": _normalize_price(entry + (risk * 3.0), symbol_info),
+            "tp3": _normalize_price(entry + (risk * 5.0), symbol_info),
         }
-    else:
-        return {
-            "tp1": round(entry - (risk * 1.5), 2),
-            "tp2": round(entry - (risk * 3.0), 2),
-            "tp3": round(entry - (risk * 5.0), 2),
-        }
+    return {
+        "tp1": _normalize_price(entry - (risk * 1.5), symbol_info),
+        "tp2": _normalize_price(entry - (risk * 3.0), symbol_info),
+        "tp3": _normalize_price(entry - (risk * 5.0), symbol_info),
+    }
 
 
 def manage_open_positions() -> int:
@@ -124,20 +184,33 @@ def manage_open_positions() -> int:
         
         # 🚨 [EMERGENCY] Panic Exit Protocol
         # If drawdown hits the critical threshold (e.g. 15%), close ALL to save capital
-        panic_threshold = _CFG.get("hedge_threshold_dd_pct", 15.0)
-        if floating_dd_pct >= panic_threshold:
-            logger.critical(f"🚨🚨 [PANIC EXIT] DRAWDOWN HIT {floating_dd_pct:.2f}% (Threshold: {panic_threshold}%). CLOSING ALL POSITIONS!")
+        panic_threshold = float(_CFG.get("hedge_threshold_dd_pct", 15.0) or 15.0)
+        loss_limit_currency = float((_RISK_CFG.get("max_daily_loss_currency", 0.0) or 0.0))
+        effective_panic_threshold = currency_loss_limit_to_dd_pct(
+            loss_limit_currency,
+            balance,
+            panic_threshold,
+        )
+        if floating_dd_pct >= effective_panic_threshold:
+            logger.critical(
+                f"🚨🚨 [PANIC EXIT] DRAWDOWN HIT {floating_dd_pct:.2f}% "
+                f"(Threshold: {effective_panic_threshold:.2f}%). CLOSING ALL POSITIONS!"
+            )
             from backend.trader.execution.mt5_order import Executor
             temp_ex = Executor(mode="live") # Use live to force real close if in live mode
             
-            positions = mt5.positions_get()
-            if positions:
-                for p in positions:
-                    temp_ex.close_symbol_positions(p.symbol)
+            temp_ex.close_all_positions()
             return 0
 
     positions = mt5.positions_get()
     if not positions:
+        return 0
+
+    blocked_reason = log_trade_block("position management", level="critical")
+    if blocked_reason:
+        logger.critical(
+            f"Position manager skipped for {len(positions)} open position(s): {blocked_reason}"
+        )
         return 0
 
     managed = 0
@@ -193,7 +266,7 @@ def _should_pyramid(pos, r_multiple: float, atr: float) -> bool:
                     total_risk_usd += pos_risk
 
     # Add-on risk = 0.3R
-    addon_risk_usd = atr * TRAIL_CONFIG["atr_multiplier"] * PYRAMID_ADDON_MAX_R
+    addon_risk_usd = base_stop_distance(atr, TRAIL_CONFIG) * PYRAMID_ADDON_MAX_R
     new_total_risk_pct = (total_risk_usd + addon_risk_usd) / (equity + 1e-9) * 100
 
     if new_total_risk_pct > PYRAMID_MAX_TOTAL_RISK_PCT:
@@ -217,7 +290,7 @@ def _execute_pyramid(pos, atr: float):
     if info is None:
         return
 
-    risk_1r = atr * TRAIL_CONFIG["atr_multiplier"]
+    risk_1r = base_stop_distance(atr, TRAIL_CONFIG)
     addon_risk_distance = risk_1r * PYRAMID_ADDON_MAX_R  # 0.3R SL distance
 
     if addon_risk_distance <= 0:
@@ -231,16 +304,17 @@ def _execute_pyramid(pos, atr: float):
     # Use small fraction of equity for add-on
     addon_risk_usd = info.equity * (PYRAMID_ADDON_MAX_R / 100.0)
     raw_lot = addon_risk_usd / (addon_risk_distance * sym_info.trade_contract_size + 1e-9)
-    lot = max(sym_info.volume_min, min(1.0, round(raw_lot, 2)))
+    lot = _round_volume_down(min(1.0, raw_lot), sym_info)
+    lot = max(float(sym_info.volume_min or 0.0), lot)
 
     # SL for add-on = entry of main position (break-even level)
-    addon_sl = pos.price_open
+    addon_sl = _normalize_price(pos.price_open, sym_info)
 
     tick = mt5.symbol_info_tick(symbol)
     if tick is None:
         return
 
-    price = tick.ask if side == "BUY" else tick.bid
+    price = _normalize_price(tick.ask if side == "BUY" else tick.bid, sym_info)
     order_type = mt5.ORDER_TYPE_BUY if side == "BUY" else mt5.ORDER_TYPE_SELL
 
     request = {
@@ -264,7 +338,8 @@ def _execute_pyramid(pos, atr: float):
         standard_symbol = mapper.to_standard(symbol)
         logger.info(
             f"🔺 PYRAMID #{ticket} {side} {standard_symbol} | "
-            f"Add-on {lot} lot @ {price:.2f} SL={addon_sl:.2f} | "
+            f"Add-on {lot} lot @ {_format_price(price, sym_info)} "
+            f"SL={_format_price(addon_sl, sym_info)} | "
             f"Pyramids: {_pyramid_count[ticket]}/{PYRAMID_MAX_PER_POS}"
         )
     else:
@@ -284,7 +359,8 @@ def _execute_partial_close(pos, close_pct: float):
     if sym_info is None:
         return
         
-    close_volume = max(sym_info.volume_min, round(current_volume * close_pct, 2))
+    close_volume = _round_volume_down(current_volume * close_pct, sym_info)
+    close_volume = max(float(sym_info.volume_min or 0.0), close_volume)
     
     # If the close volume is practically the entire position, don't partial close or just let it hit TP
     if current_volume - close_volume < sym_info.volume_min:
@@ -294,7 +370,7 @@ def _execute_partial_close(pos, close_pct: float):
     if tick is None:
         return
         
-    price = tick.bid if side == "BUY" else tick.ask
+    price = _normalize_price(tick.bid if side == "BUY" else tick.ask, sym_info)
     order_type = mt5.ORDER_TYPE_SELL if side == "BUY" else mt5.ORDER_TYPE_BUY
     
     request = {
@@ -316,7 +392,7 @@ def _execute_partial_close(pos, close_pct: float):
         _partial_close_done[ticket] = True
         logger.info(
             f"💰 SCALE-OUT #{ticket} {side} {symbol} | "
-            f"Closed {close_volume} lot ({close_pct*100:.0f}%) @ {price:.2f}"
+            f"Closed {close_volume} lot ({close_pct*100:.0f}%) @ {_format_price(price, sym_info)}"
         )
     else:
         err = result.comment if result else "None"
@@ -342,8 +418,11 @@ def _manage_single_position(pos):
     tick = mt5.symbol_info_tick(symbol)
     if tick is None:
         return
+    symbol_info = mt5.symbol_info(symbol)
+    if symbol_info is None:
+        return
 
-    current_price = tick.bid if side == "BUY" else tick.ask
+    current_price = _normalize_price(tick.bid if side == "BUY" else tick.ask, symbol_info)
 
     # ═══════════════════════════════════════════════════
     # PHASE 0: Auto-set SL/TP if MISSING (manual orders)
@@ -354,21 +433,25 @@ def _manage_single_position(pos):
 
     # Auto-set SL if missing (SL = 0)
     if current_sl == 0 or current_sl == 0.0:
-        new_sl_init = compute_anti_stophunt_sl(entry, side, atr)
+        new_sl_init = compute_anti_stophunt_sl(entry, side, atr, symbol_info)
         needs_update = True
         logger.info(
             f"🛡️ AUTO-SL #{ticket} {side} {standard_symbol} | "
-            f"Entry={entry:.2f} → SL={new_sl_init:.2f} (1.2x ATR={atr:.2f})"
+            f"Entry={_format_price(entry, symbol_info)} → SL={_format_price(new_sl_init, symbol_info)} "
+            f"({TRAIL_CONFIG['atr_multiplier'] * (1 + TRAIL_CONFIG['ghost_buffer_pct']):.2f}x ATR)"
         )
 
     # Auto-set TP if missing (TP = 0)
     if current_tp == 0 or current_tp == 0.0:
-        tp_levels = compute_atr_tp(entry, side, atr)
+        tp_levels = compute_atr_tp(entry, side, atr, symbol_info)
         new_tp_init = tp_levels["tp1"]
         needs_update = True
         logger.info(
             f"🎯 AUTO-TP #{ticket} {side} {standard_symbol} | "
-            f"Entry={entry:.2f} → TP1={tp_levels['tp1']:.2f} TP2={tp_levels['tp2']:.2f} TP3={tp_levels['tp3']:.2f}"
+            f"Entry={_format_price(entry, symbol_info)} → "
+            f"TP1={_format_price(tp_levels['tp1'], symbol_info)} "
+            f"TP2={_format_price(tp_levels['tp2'], symbol_info)} "
+            f"TP3={_format_price(tp_levels['tp3'], symbol_info)}"
         )
 
     if needs_update:
@@ -381,17 +464,63 @@ def _manage_single_position(pos):
         }
         result = mt5.order_send(request)
         if result and result.retcode == mt5.TRADE_RETCODE_DONE:
-            logger.info(f"✅ SL/TP set for #{ticket} — SL={new_sl_init:.2f} TP={new_tp_init:.2f}")
+            logger.info(
+                f"✅ SL/TP set for #{ticket} — "
+                f"SL={_format_price(new_sl_init, symbol_info)} "
+                f"TP={_format_price(new_tp_init, symbol_info)}"
+            )
             current_sl = new_sl_init
             current_tp = new_tp_init
         else:
             err = result.comment if result else "None"
             logger.warning(f"⚠️ Auto SL/TP failed #{ticket}: {err}")
 
+    # Hard cap existing SL distance by configured abs/ATR rules.
+    # This keeps legacy/manual/wide SL from exceeding account safety envelope.
+    if current_sl and current_sl > 0:
+        max_sl_distance = _get_symbol_max_sl_distance(standard_symbol, atr)
+        current_sl_distance = abs(entry - current_sl)
+        if max_sl_distance > 0 and current_sl_distance > max_sl_distance:
+            capped_sl = (
+                _normalize_price(entry - max_sl_distance, symbol_info)
+                if side == "BUY"
+                else _normalize_price(entry + max_sl_distance, symbol_info)
+            )
+
+            if symbol_info:
+                point = symbol_info.point or 0.01
+                min_stop_dist = (symbol_info.trade_stops_level or 0) * point
+                safety_buffer = max(min_stop_dist, point * 5)
+                if side == "BUY":
+                    capped_sl = _normalize_price(min(capped_sl, current_price - safety_buffer), symbol_info)
+                else:
+                    capped_sl = _normalize_price(max(capped_sl, current_price + safety_buffer), symbol_info)
+
+            improved = (side == "BUY" and capped_sl > current_sl) or (side == "SELL" and capped_sl < current_sl)
+            if improved:
+                request = {
+                    "action": mt5.TRADE_ACTION_SLTP,
+                    "symbol": symbol,
+                    "position": ticket,
+                    "sl": capped_sl,
+                    "tp": current_tp,
+                }
+                result = mt5.order_send(request)
+                if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+                    logger.warning(
+                        f"🛡️ [SL CAP LIVE] #{ticket} {side} {standard_symbol} "
+                        f"SL {_format_price(current_sl, symbol_info)} -> {_format_price(capped_sl, symbol_info)} "
+                        f"(dist {current_sl_distance:.3f} -> {max_sl_distance:.3f})"
+                    )
+                    current_sl = capped_sl
+                else:
+                    err = result.comment if result else "None"
+                    logger.warning(f"⚠️ Live SL cap failed #{ticket}: {err}")
+
     # ═══════════════════════════════════════════════════
     # PHASE 1: Trailing Stop & Profit Lock (only when in profit)
     # ═══════════════════════════════════════════════════
-    risk_1r = atr * TRAIL_CONFIG["atr_multiplier"]  # 1R = SL distance
+    risk_1r = base_stop_distance(atr, TRAIL_CONFIG)  # 1R = full initial SL distance
     if risk_1r <= 0:
         return
 
@@ -414,79 +543,29 @@ def _manage_single_position(pos):
     if _should_pyramid(pos, r_multiple, atr):
         _execute_pyramid(pos, atr)
 
-    # ═══════════════════════════════════════════════════
-    # PHASE 1.6: Trailing stop initialization
-    # ═══════════════════════════════════════════════════
-    new_sl = current_sl
-    trail_reason = ""
-
-    # --- STEALTH / DEFENSIVE OVERRIDE ---
-    # If the account is under stress (DD > 15%), we move to BE at just 0.5R to protect capital
     info = mt5.account_info()
+    floating_dd_pct = 0.0
     if info:
         balance = info.balance
         equity = info.equity
         floating_dd_pct = ((balance - equity) / (balance + 1e-9) * 100)
-        
-        activation_r = TRAIL_CONFIG["activation_r"]
-        
-        # --- Monday Open Sensitivity for XAU ---
-        now_th = dt.datetime.now(dt.timezone.utc) + timedelta(hours=7)
-        is_monday_morning = now_th.weekday() == 0 and now_th.hour < 10
-        if is_monday_morning and "XAU" in standard_symbol.upper():
-            activation_r = min(activation_r, 0.8)
-            logger.debug(f"💎 XAU High-Sensitivity Mode: Reducing activation R to {activation_r}")
-
-        # --- STEALTH BE (Low Drawdown Recovery) ---
-        # Very aggressive break-even to protect capital when DD > 15%
-        if floating_dd_pct > 15.0:
-            activation_r = min(activation_r, 0.2) # Move to BE almost immediately when in slight profit
-            logger.debug(f"🛡️ RECOVERY STEALTH BE ACTIVE (DD={floating_dd_pct:.1f}%): Activation R at {activation_r}")
-
-        if r_multiple >= activation_r:
-            if side == "BUY" and entry > new_sl:
-                new_sl = entry
-                trail_reason = f"Stealth Break-Even (+{activation_r}R)"
-            elif side == "SELL" and (entry < new_sl or current_sl == 0):
-                new_sl = entry
-                trail_reason = f"Stealth Break-Even (+{activation_r}R)"
-
-    # Tier locking: check from highest to lowest
-    for tier in reversed(TRAIL_CONFIG["lock_tiers"]):
-        if r_multiple >= tier["r_multiple"]:
-            locked_profit = profit_distance * tier["lock_pct"]
-            if side == "BUY":
-                tier_sl = round(entry + locked_profit, 2)
-            else:
-                tier_sl = round(entry - locked_profit, 2)
-
-            # Only move SL if it improves (never move SL backward)
-            if side == "BUY" and tier_sl > new_sl:
-                new_sl = tier_sl
-                trail_reason = f"Profit Lock +{tier['r_multiple']:.0f}R ({tier['lock_pct']*100:.0f}%)"
-            elif side == "SELL" and (tier_sl < new_sl or current_sl == 0):
-                new_sl = tier_sl
-                trail_reason = f"Profit Lock +{tier['r_multiple']:.0f}R ({tier['lock_pct']*100:.0f}%)"
-            break
-
-    # ATR Trailing: if past activation, also check pure ATR trail
-    if r_multiple >= TRAIL_CONFIG["activation_r"]:
-        # Tighter ATR Trail in Recovery Mode
-        trail_mult = 1.5 if floating_dd_pct > 15.0 else TRAIL_CONFIG["atr_multiplier"]
-        
-        if side == "BUY":
-            atr_trail_sl = round(current_price - (atr * trail_mult), 2)
-            if atr_trail_sl > new_sl:
-                new_sl = atr_trail_sl
-                trail_reason = f"Aggressive ATR Trail ({trail_mult}x ATR)" if floating_dd_pct > 15.0 else f"ATR Trail ({trail_mult}x ATR)"
-        else:
-            atr_trail_sl = round(current_price + (atr * trail_mult), 2)
-            if atr_trail_sl < new_sl or current_sl == 0:
-                new_sl = atr_trail_sl
-                trail_reason = f"Aggressive ATR Trail ({trail_mult}x ATR)" if floating_dd_pct > 15.0 else f"ATR Trail ({trail_mult}x ATR)"
+    trailing = compute_trailing_stop(
+        entry=entry,
+        current_sl=current_sl,
+        current_price=current_price,
+        side=side,
+        atr=atr,
+        standard_symbol=standard_symbol,
+        floating_dd_pct=floating_dd_pct,
+        cfg=TRAIL_CONFIG,
+        now_utc=dt.datetime.now(dt.timezone.utc),
+    )
+    new_sl = _normalize_price(float(trailing["new_sl"]), symbol_info)
+    trail_reason = str(trailing.get("reason", "") or "")
+    r_multiple = float(trailing.get("r_multiple", r_multiple))
 
     # Should we move SL?
-    if new_sl == current_sl:
+    if not trail_reason or new_sl == current_sl:
         return
 
     # 🛡️ [SPREAD GUARD] Don't modify during spikes (prevents rejections)
@@ -500,7 +579,8 @@ def _manage_single_position(pos):
 
     # Check minimum movement to avoid spam
     sl_move = abs(new_sl - current_sl)
-    if sl_move < TRAIL_CONFIG["min_sl_move"]:
+    min_sl_move = _resolve_min_sl_move(standard_symbol, atr, symbol_info, TRAIL_CONFIG)
+    if sl_move < min_sl_move:
         return
 
     # Only improve SL (never widen risk)
@@ -522,7 +602,8 @@ def _manage_single_position(pos):
     if result and result.retcode == mt5.TRADE_RETCODE_DONE:
         logger.info(
             f"🔄 TRAIL #{ticket} {side} {standard_symbol} | "
-            f"R={r_multiple:.1f} | SL: {current_sl:.2f} → {new_sl:.2f} | "
+            f"R={r_multiple:.1f} | "
+            f"SL: {_format_price(current_sl, symbol_info)} → {_format_price(new_sl, symbol_info)} | "
             f"Reason: {trail_reason}"
         )
     else:

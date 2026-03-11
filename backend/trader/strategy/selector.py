@@ -11,6 +11,7 @@ import json
 import logging
 import pandas as pd
 from datetime import datetime, timezone
+from backend.trader.config.paths import SETTINGS_PATH
 from .trend_killer import signal_trend_killer
 from .liquidity_hunter import signal_liquidity_hunter
 from .sniper_pro import signal_sniper_pro
@@ -31,6 +32,7 @@ from .usoil_elite import signal_usoil_elite
 from .usoil_momentum import signal_usoil_momentum
 from .ai_brain_strategy import signal_ai_brain
 from .momentum_scalper_v2 import signal_momentum_scalper_v2
+from .rapid_pullback import signal_rapid_pullback
 from .btc_mean_rev import signal_btc_mean_rev
 from .btc_stop_hunt_v2 import signal_btc_stop_hunt_v2
 from .btc_elite_v2 import signal_btc_elite_v2
@@ -39,6 +41,7 @@ from .btc_oracle import signal_btc_oracle
 from .aether_flow_live import signal_aether_flow
 from .indices_ultimate import signal_indices_ultimate
 from .indicator_confluence import signal_indicator_confluence
+from .tick_volume_gate import evaluate_tick_volume
 
 
 from backend.trader.features.pattern_recognition import analyze_patterns
@@ -46,16 +49,18 @@ from backend.trader.brain.ml_scoring import calculate_trade_probability
 from backend.trader.brain.feedback_loop import feedback_loop
 from backend.trader.brain.brain_bridge import brain_bridge
 from backend.trader.brain.symbol_tuner import symbol_tuner
+from backend.trader.brain.professional_guard import apply_professional_guard
 
 
 logger = logging.getLogger("opus_logger")
 
-with open("d:/VibeCode/Trade/backend/trader/config/settings.json") as _f:
+with open(SETTINGS_PATH, encoding="utf-8") as _f:
     _STRATEGY_CFG = json.load(_f).get("strategy", {})
 
 COOLDOWN_BARS = _STRATEGY_CFG.get("trade_cooldown_bars", 10)
 MIN_CONFIDENCE = _STRATEGY_CFG.get("min_confidence_trade", 0.6)
 
+ENABLE_TREND_KILLER = _STRATEGY_CFG.get("enable_trend_killer", True)
 ENABLE_SNIPER = _STRATEGY_CFG.get("enable_sniper_pro", True)
 ENABLE_PREDICTA = _STRATEGY_CFG.get("enable_predicta_v4", True)
 ENABLE_COUNTER = _STRATEGY_CFG.get("enable_counter_trend", True)
@@ -74,6 +79,7 @@ ENABLE_USOIL_ELITE = _STRATEGY_CFG.get("enable_usoil_elite", True)
 ENABLE_USOIL_MOMENTUM = _STRATEGY_CFG.get("enable_usoil_momentum", True)
 ENABLE_AI_BRAIN = _STRATEGY_CFG.get("enable_ai_brain", True)
 ENABLE_MOMENTUM_SCALPER = _STRATEGY_CFG.get("enable_momentum_scalper", True)
+ENABLE_RAPID_PULLBACK = _STRATEGY_CFG.get("enable_rapid_pullback", False)
 ENABLE_BTC_MEAN_REV = _STRATEGY_CFG.get("enable_btc_mean_rev", False)
 ENABLE_BTC_STOP_HUNT = _STRATEGY_CFG.get("enable_btc_stop_hunt", False)
 ENABLE_BTC_ELITE = _STRATEGY_CFG.get("enable_btc_elite", False)
@@ -81,6 +87,7 @@ ENABLE_BTC_ORACLE = _STRATEGY_CFG.get("enable_btc_oracle", True)
 ENABLE_CORRELATION_SNIPER = _STRATEGY_CFG.get("enable_correlation_sniper", True)
 ENABLE_AETHER_FLOW = _STRATEGY_CFG.get("enable_aether_flow", True)
 ENABLE_INDICATOR_CONFLUENCE = _STRATEGY_CFG.get("enable_indicator_confluence", True)
+MOMENTUM_MODELS = {"MOMENTUM_RIDER", "MOMENTUM_SCALPER_V2", "USOIL_MOMENTUM"}
 
 
 _last_trade_bar = {}
@@ -106,6 +113,112 @@ def _calc_rr(signal: dict) -> float:
         return reward / risk
     except Exception:
         return 0.0
+
+
+def _filter_candidate_models(candidates: list, context: dict) -> list:
+    whitelist = context.get("strategy_whitelist") or context.get("model_whitelist")
+    if not whitelist:
+        return candidates
+
+    allowed = {str(name).upper() for name in whitelist}
+    filtered = []
+    for sig in candidates:
+        if not isinstance(sig, dict):
+            continue
+        if str(sig.get("model", "")).upper() in allowed:
+            filtered.append(sig)
+    return filtered
+
+
+def _resolve_forced_models(context: dict) -> set:
+    forced = context.get("force_enabled_models") or context.get("force_models") or []
+    if isinstance(forced, str):
+        forced = [forced]
+    return {str(name).strip().upper() for name in forced if str(name).strip()}
+
+
+def _is_model_enabled(context: dict, model_name: str, enabled_by_config: bool) -> bool:
+    return bool(enabled_by_config) or (str(model_name).upper() in _resolve_forced_models(context))
+
+
+def _resolve_reference_utc(context: dict, df: pd.DataFrame):
+    ref_time = context.get("current_time")
+    if ref_time is None and not df.empty:
+        ref_time = df.iloc[-1].get("time")
+    if ref_time is None:
+        return None
+    try:
+        ts = pd.Timestamp(ref_time)
+        if ts.tzinfo is None:
+            ts = ts.tz_localize("UTC")
+        else:
+            ts = ts.tz_convert("UTC")
+        return ts.to_pydatetime()
+    except Exception:
+        return None
+
+
+def _apply_momentum_discipline(candidates: list, context: dict, df: pd.DataFrame, events: list) -> list:
+    if not candidates or df is None or df.empty:
+        return candidates
+
+    latest = df.iloc[-1]
+    symbol = str(context.get("symbol", "")).upper()
+    session = str(context.get("session") or context.get("current_session") or "").upper()
+    regime_name = str(context.get("regime_result", {}).get("regime", "")).upper()
+    is_crypto = "BTC" in symbol
+    adx = float(latest.get("adx", 0.0) or 0.0)
+    body_ratio = float(latest.get("body_ratio", 0.0) or 0.0)
+    vol_ratio = float(latest.get("vol_ratio", 0.0) or 0.0)
+    plus_di = float(latest.get("plus_di", 0.0) or 0.0)
+    minus_di = float(latest.get("minus_di", 0.0) or 0.0)
+    has_sweep = any(e.get("type") == "SWEEP" for e in (events or []))
+    is_high_beta = any(key in symbol for key in ["XAU", "BTC", "USOIL"])
+
+    momentum_candidates = [s for s in candidates if str(s.get("model", "")).upper() in MOMENTUM_MODELS]
+    if len(momentum_candidates) >= 2 and len({str(s.get("side", "")).upper() for s in momentum_candidates}) > 1:
+        logger.info(f"🚫 [MOMENTUM] Conflicting momentum directions for {symbol} - dropping momentum entries")
+        candidates = [s for s in candidates if str(s.get("model", "")).upper() not in MOMENTUM_MODELS]
+
+    disciplined = []
+    for sig in candidates:
+        model = str(sig.get("model", "")).upper()
+        if model not in MOMENTUM_MODELS:
+            disciplined.append(sig)
+            continue
+
+        side = str(sig.get("side", "")).upper()
+        di_gap = (plus_di - minus_di) if side == "BUY" else (minus_di - plus_di)
+        min_adx = 22.0 if is_high_beta else 20.0
+        min_di_gap = 3.0 if is_high_beta else 2.0
+        min_body_ratio = 0.30 if is_high_beta else 0.25
+        min_vol_ratio = 1.0 if not is_crypto else 0.9
+
+        if "TREND" not in regime_name and "VOLATILITY" not in regime_name:
+            logger.info(f"🚫 [MOMENTUM] {model} blocked on {symbol}: regime {regime_name or 'UNKNOWN'} not directional")
+            continue
+        if not is_crypto and session not in {"LONDON", "NY", "LONDON/NY"}:
+            logger.info(f"🚫 [MOMENTUM] {model} blocked on {symbol}: session {session or 'UNKNOWN'} outside London/NY")
+            continue
+        if adx < min_adx:
+            logger.info(f"🚫 [MOMENTUM] {model} blocked on {symbol}: ADX {adx:.1f} < {min_adx:.1f}")
+            continue
+        if di_gap < min_di_gap:
+            logger.info(f"🚫 [MOMENTUM] {model} blocked on {symbol}: DI gap {di_gap:.1f} < {min_di_gap:.1f}")
+            continue
+        if body_ratio < min_body_ratio:
+            logger.info(f"🚫 [MOMENTUM] {model} blocked on {symbol}: body_ratio {body_ratio:.2f} < {min_body_ratio:.2f}")
+            continue
+        if vol_ratio < min_vol_ratio:
+            logger.info(f"🚫 [MOMENTUM] {model} blocked on {symbol}: vol_ratio {vol_ratio:.2f} < {min_vol_ratio:.2f}")
+            continue
+        if is_high_beta and not has_sweep and float(sig.get("confidence", 0.0) or 0.0) < 0.78:
+            logger.info(f"🚫 [MOMENTUM] {model} blocked on {symbol}: high-beta setup lacks sweep/elite confidence")
+            continue
+
+        disciplined.append(sig)
+
+    return disciplined
 
 
 def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
@@ -148,13 +261,19 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
     # ─── PHASE 4: TIME-GATING (NY CLOSE SPREAD GUARD) ──────────
     # Exness spreads widen and liquidity drops during NY Close (Hour 20:00-21:00 Server Time)
     # Block new entries during this window to protect capital.
-    server_hour = datetime.now(timezone.utc).hour + 3 # Approximation for MT5 Server Time (GMT+3)
-    if 20 <= (server_hour % 24) <= 21:
-        logger.info(f"🛡️ [NY-CLOSE] Time Block Active (Hour {server_hour % 24}). Blocking new entries for {_sym_debug}")
+    backtest_mode = bool(context.get("backtest_mode", False))
+    if backtest_mode:
+        ref_utc = _resolve_reference_utc(context, df)
+        server_hour = ((ref_utc.hour + 3) % 24) if ref_utc is not None else None
+    else:
+        server_hour = (datetime.now(timezone.utc).hour + 3) % 24  # Approximation for MT5 Server Time (GMT+3)
+    if server_hour is not None and 20 <= server_hour <= 21:
+        logger.info(f"🛡️ [NY-CLOSE] Time Block Active (Hour {server_hour}). Blocking new entries for {_sym_debug}")
         return None
 
     # ─── PHASE 5: PARAMETER EVOLUTION & ASSET TUNING ──────────
     evolved_ctx = context.copy()
+    strategy_eval_mode = bool(evolved_ctx.get("strategy_eval_mode", False))
     symbol_upper = _sym_debug.upper()
     
     # Identify Asset Class
@@ -163,13 +282,20 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
     is_index = any(i in symbol_upper for i in ["30", "TEC", "NAS", "500", "HK", "JP", "AUS"])
     is_oil = "OIL" in symbol_upper
     
-    evolved_ctx['brain_params'] = {}
+    incoming_brain_params = context.get("brain_params") if isinstance(context.get("brain_params"), dict) else {}
+    evolved_ctx['brain_params'] = {
+        str(name): dict(values)
+        for name, values in incoming_brain_params.items()
+        if isinstance(values, dict)
+    }
     
     # Pre-fetch for common strategies
-    for strat in ['gold_elite', 'gold_scalp_pro', 'ranging_sniper', 'alpha_v6', 'btc_elite_v2', 'usoil_elite', 'indices_ultimate']:
+    for strat in ['gold_elite', 'gold_scalp_pro', 'ranging_sniper', 'alpha_v6', 'btc_elite_v2', 'usoil_elite', 'indices_ultimate', 'rapid_pullback']:
         params = brain_bridge.get_evolved_params(symbol, regime_name, strat)
         if params:
-            evolved_ctx['brain_params'][strat] = params
+            slot = evolved_ctx['brain_params'].setdefault(strat, {})
+            for key, value in params.items():
+                slot.setdefault(key, value)
 
     # Apply Institutional Tuning overrides
     if 'alpha_v6' not in evolved_ctx['brain_params']:
@@ -194,67 +320,74 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
     candidates = []
     
     # 1. Trend & Global Core (Universal)
-    candidates.append(signal_trend_killer(df, evolved_ctx))
-    if ENABLE_ALPHA_V6:
+    if _is_model_enabled(evolved_ctx, "TREND", ENABLE_TREND_KILLER):
+        candidates.append(signal_trend_killer(df, evolved_ctx))
+    if _is_model_enabled(evolved_ctx, "ALPHA_V6_INSTITUTIONAL", ENABLE_ALPHA_V6):
         candidates.append(signal_alpha_v6_smc(df, evolved_ctx))
-    if ENABLE_INDICATOR_CONFLUENCE:
+    if _is_model_enabled(evolved_ctx, "INDICATOR_CONFLUENCE", ENABLE_INDICATOR_CONFLUENCE):
         candidates.append(signal_indicator_confluence(df, evolved_ctx))
+    if _is_model_enabled(evolved_ctx, "MOMENTUM_RIDER", ENABLE_MOMENTUM_RIDER):
+        candidates.append(signal_momentum_rider(df, evolved_ctx))
+    if _is_model_enabled(evolved_ctx, "MOMENTUM_SCALPER_V2", ENABLE_MOMENTUM_SCALPER):
+        candidates.append(signal_momentum_scalper_v2(df, evolved_ctx))
     
     # 2. Metals Focused
     if is_metal:
-        if ENABLE_SMC_METALS: candidates.append(signal_smc_metals(df, evolved_ctx))
-        if ENABLE_GOLD_ELITE: candidates.append(signal_gold_elite(df, evolved_ctx))
-        if ENABLE_CORRELATION_SNIPER:
+        if _is_model_enabled(evolved_ctx, "SMC_METALS", ENABLE_SMC_METALS): candidates.append(signal_smc_metals(df, evolved_ctx))
+        if _is_model_enabled(evolved_ctx, "GOLD_ELITE", ENABLE_GOLD_ELITE): candidates.append(signal_gold_elite(df, evolved_ctx))
+        if _is_model_enabled(evolved_ctx, "CORRELATION_SNIPER", ENABLE_CORRELATION_SNIPER):
             from .correlation_sniper import signal_correlation_sniper
             candidates.append(signal_correlation_sniper(df, evolved_ctx))
 
     # 3. Crypto Focused
     if is_crypto:
-        if ENABLE_BTC_WHALE: candidates.append(signal_btc_whale(df, evolved_ctx))
+        if _is_model_enabled(evolved_ctx, "BTC_WHALE", ENABLE_BTC_WHALE): candidates.append(signal_btc_whale(df, evolved_ctx))
         # Add other BTC specific models here
     
     # 4. Indices Focused
     if is_index:
         from .indices_ultimate import signal_indices_ultimate
-        candidates.append(signal_indices_ultimate(df, evolved_ctx))
-        if ENABLE_MOMENTUM_RIDER: candidates.append(signal_momentum_rider(df, evolved_ctx))
+        if _is_model_enabled(evolved_ctx, "INDICES_ULTIMATE", ENABLE_INDICES_ULTIMATE):
+            candidates.append(signal_indices_ultimate(df, evolved_ctx))
 
     # 5. Energy Focused (USOIL)
     if is_oil:
         from .usoil_elite import signal_usoil_elite
         from .usoil_momentum import signal_usoil_momentum
-        candidates.append(signal_usoil_elite(df, evolved_ctx))
-        candidates.append(signal_usoil_momentum(df, evolved_ctx))
+        if _is_model_enabled(evolved_ctx, "USOIL_ELITE", ENABLE_USOIL_ELITE):
+            candidates.append(signal_usoil_elite(df, evolved_ctx))
+        if _is_model_enabled(evolved_ctx, "USOIL_MOMENTUM", ENABLE_USOIL_MOMENTUM):
+            candidates.append(signal_usoil_momentum(df, evolved_ctx))
 
     # 6. Forex & Utility
     if not (is_metal or is_crypto or is_index or is_oil):
-        if ENABLE_SNIPER: candidates.append(signal_sniper_pro(df, evolved_ctx))
-        if ENABLE_PREDICTA: candidates.append(signal_predicta_v4(df, evolved_ctx))
+        if _is_model_enabled(evolved_ctx, "SNIPER_PRO", ENABLE_SNIPER): candidates.append(signal_sniper_pro(df, evolved_ctx))
+        if _is_model_enabled(evolved_ctx, "PREDICTA_V4", ENABLE_PREDICTA): candidates.append(signal_predicta_v4(df, evolved_ctx))
 
     # 6. Global Overrides (Only if explicitly enabled)
-    if ENABLE_COUNTER: candidates.append(signal_counter_trend(df, evolved_ctx, current_bar))
-    if ENABLE_FVG_LOGIC: candidates.append(signal_fvg_logic(df, evolved_ctx))
-    if ENABLE_AI_BRAIN: candidates.append(signal_ai_brain(df, evolved_ctx))
+    if _is_model_enabled(evolved_ctx, "COUNTER_TREND", ENABLE_COUNTER): candidates.append(signal_counter_trend(df, evolved_ctx, current_bar))
+    if _is_model_enabled(evolved_ctx, "FVG_LOGIC", ENABLE_FVG_LOGIC): candidates.append(signal_fvg_logic(df, evolved_ctx))
+    if _is_model_enabled(evolved_ctx, "AI_BRAIN", ENABLE_AI_BRAIN): candidates.append(signal_ai_brain(df, evolved_ctx))
 
-    if ENABLE_MOMENTUM_SCALPER:
-        candidates.append(signal_momentum_scalper_v2(df, evolved_ctx))
+    if _is_model_enabled(evolved_ctx, "RAPID_PULLBACK", ENABLE_RAPID_PULLBACK) or evolved_ctx.get("enable_rapid_pullback", False):
+        candidates.append(signal_rapid_pullback(df, evolved_ctx))
 
-    if ENABLE_BTC_MEAN_REV and "BTC" in _sym_debug:
+    if _is_model_enabled(evolved_ctx, "BTC_MEAN_REV", ENABLE_BTC_MEAN_REV) and "BTC" in _sym_debug:
         candidates.append(signal_btc_mean_rev(df, evolved_ctx))
         
-    if ENABLE_BTC_STOP_HUNT and "BTC" in _sym_debug:
+    if _is_model_enabled(evolved_ctx, "BTC_STOP_HUNT_V2", ENABLE_BTC_STOP_HUNT) and "BTC" in _sym_debug:
         candidates.append(signal_btc_stop_hunt_v2(df, evolved_ctx))
         
-    if ENABLE_BTC_ELITE and "BTC" in _sym_debug:
+    if _is_model_enabled(evolved_ctx, "BTC_ELITE_V2", ENABLE_BTC_ELITE) and "BTC" in _sym_debug:
         candidates.append(signal_btc_elite_v2(df, evolved_ctx))
         
-    if ENABLE_BTC_ORACLE and "BTC" in _sym_debug:
+    if _is_model_enabled(evolved_ctx, "BTC_ORACLE", ENABLE_BTC_ORACLE) and "BTC" in _sym_debug:
         candidates.append(signal_btc_oracle(df, evolved_ctx))
 
-    if ENABLE_AETHER_FLOW:
+    if _is_model_enabled(evolved_ctx, "AETHER_FLOW", ENABLE_AETHER_FLOW):
         candidates.append(signal_aether_flow(df, evolved_ctx))
 
-    if ENABLE_INDICES_ULTIMATE and ("30" in _sym_debug or "TEC" in _sym_debug or "NAS" in _sym_debug):
+    if _is_model_enabled(evolved_ctx, "INDICES_ULTIMATE", ENABLE_INDICES_ULTIMATE) and ("30" in _sym_debug or "TEC" in _sym_debug or "NAS" in _sym_debug):
         candidates.append(signal_indices_ultimate(df, evolved_ctx))
 
     if events:
@@ -262,18 +395,20 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
 
     from backend.trader.brain.quality_filter import quality_filter
     
+    candidates = _filter_candidate_models(candidates, evolved_ctx)
     valid_candidates = [s for s in candidates if s is not None]
     
     # ─── 2. Filter by Historical Performance (Quality Guard) ─────
     # ใช้ข้อมูลจากการ Replay 180 วัน เพื่อกรองสัญญาณที่ไม่มีคุณภาพย้อนหลัง
     quality_candidates = []
     for sig in valid_candidates:
-        if quality_filter.is_quality_signal(sig, evolved_ctx):
+        if strategy_eval_mode or quality_filter.is_quality_signal(sig, evolved_ctx):
             quality_candidates.append(sig)
         else:
             logger.info(f"🚫 [SELECTOR] Quality check failed for {sig.get('model')} - Signal Dropped")
             
     valid_candidates = quality_candidates
+    valid_candidates = _apply_momentum_discipline(valid_candidates, evolved_ctx, df, events)
 
     # ─── 2.5. Institutional Major Trend Gate (HTF EMA 200) ─────
     # [ANTIGRAVITY] Forbidden to trade against major trend (H1 EMA 200)
@@ -361,6 +496,8 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
         )
         if sig.get('model') in elite_models:
             blended = 0.1 * (ml_score / 100.0) + 0.9 * raw_confidence
+        elif strategy_eval_mode:
+            blended = 0.2 * (ml_score / 100.0) + 0.8 * raw_confidence
         else:
             blended = 0.4 * (ml_score / 100.0) + 0.6 * raw_confidence
             
@@ -393,6 +530,34 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
                 sig['ml_score'] = sig['confidence'] * 100
                 sig['rationale'].append("⚠️ Vol Dryup Penalty -10%")
                 logger.debug(f"VOL_GATE: {sig.get('model')} penalized for dryup (vol_ratio={vol_ratio:.2f})")
+
+    # ─── PHASE 3.55: TICK VOLUME ENTRY GATE ───────────────────
+    # Only keep entries when tick volume is large enough and aligned with pressure.
+    tv_filtered = []
+    for sig in scored_signals:
+        tv_gate = evaluate_tick_volume(df, sig, context=evolved_ctx)
+        sig['tick_volume_gate'] = tv_gate.state
+        sig['tick_volume_ratio'] = tv_gate.metrics.get('vol_ratio', vol_ratio)
+        sig['tick_volume_side'] = tv_gate.metrics.get('directional_side', 'NEUTRAL')
+        sig['tick_volume_boost'] = tv_gate.confidence_delta
+
+        if not tv_gate.allowed:
+            logger.info(
+                f"🚫 [TICK VOL] {sig.get('model')} blocked on {_sym_debug}: "
+                f"{tv_gate.reason}"
+            )
+            continue
+
+        if tv_gate.confidence_delta:
+            sig['confidence'] = float(min(0.98, max(0.0, sig['confidence'] + tv_gate.confidence_delta)))
+            sig['ml_score'] = sig['confidence'] * 100
+        if tv_gate.reason:
+            sig['rationale'].append(tv_gate.reason)
+        tv_filtered.append(sig)
+
+    scored_signals = tv_filtered
+    if not scored_signals:
+        return None
 
     # ─── PHASE 3.6: BTC HIGH-SPREAD PENALTY ────────────────────
     # BTC spread 500-800 pts eats ~40% of tight setups → require stronger signal
@@ -451,6 +616,10 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
     if not rr_filtered:
         return None
 
+    rr_filtered = apply_professional_guard(rr_filtered, evolved_ctx)
+    if not rr_filtered:
+        return None
+
     # ─── PHASE 4.3: CONFLUENCE-AWARE COMPOSITE SCORING ────────
     buy_count = sum(1 for s in rr_filtered if s.get("side") == "BUY")
     sell_count = sum(1 for s in rr_filtered if s.get("side") == "SELL")
@@ -504,6 +673,8 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
     if req_confidence == 0:
         req_confidence = MIN_CONFIDENCE
     req_confidence = max(req_confidence, float(asset_profile.get("min_confidence", MIN_CONFIDENCE)))
+    if strategy_eval_mode:
+        req_confidence = min(req_confidence, float(evolved_ctx.get("strategy_eval_min_confidence", 0.62)))
     
     if best_sig.get('confidence', 0) < req_confidence:
         if "BTC" in _sym_debug:

@@ -16,9 +16,11 @@ import logging
 import numpy as np
 import pandas as pd
 
+from backend.trader.config.paths import SETTINGS_PATH
+
 logger = logging.getLogger("predicta_v4")
 
-with open("d:/VibeCode/Trade/backend/trader/config/settings.json") as _f:
+with open(SETTINGS_PATH, encoding="utf-8") as _f:
     _P4_CFG = json.load(_f).get("strategy", {}).get("predicta_v4", {})
 
 MIN_CONFLUENCE = _P4_CFG.get("min_confluence", 4)

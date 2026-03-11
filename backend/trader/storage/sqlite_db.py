@@ -3,13 +3,28 @@ from pathlib import Path
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
+from backend.trader.config.paths import OPUS_DB_PATH
+ 
 class DataStore:
-    def __init__(self, db_path="d:/VibeCode/Trade/trader/data/opus.db"):
+    def __init__(self, db_path=OPUS_DB_PATH):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=10.0)
-        self._configure_connection()
-        self.create_schema()
+        self.fallback_mode = False
+        try:
+            self.conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=10.0)
+            self._configure_connection()
+            self.create_schema()
+        except sqlite3.DatabaseError:
+            try:
+                self.conn.close()
+            except Exception:
+                pass
+            # Keep the corrupted file untouched. Fall back to an in-memory DB so
+            # selector/tests can still boot in degraded mode.
+            self.conn = sqlite3.connect(":memory:", check_same_thread=False, timeout=10.0)
+            self.fallback_mode = True
+            self._configure_connection()
+            self.create_schema()
 
     def _configure_connection(self):
         cursor = self.conn.cursor()
@@ -361,6 +376,116 @@ class DataStore:
                 }
             )
         return out
+
+    def get_closed_trade_model_performance(
+        self,
+        *,
+        symbol: Optional[str] = None,
+        model: Optional[str] = None,
+        days: int = 30,
+    ) -> Dict:
+        """
+        Rolling performance for a specific symbol/model combination from real closed trades.
+        """
+        cursor = self.conn.cursor()
+        where = ["datetime(closed_at) >= datetime('now', ?)"]
+        params: List[object] = [f'-{max(1, int(days))} days']
+
+        if symbol:
+            where.append("UPPER(COALESCE(standard_symbol, symbol)) = ?")
+            params.append(str(symbol).upper())
+        if model:
+            where.append("UPPER(model) = ?")
+            params.append(str(model).upper())
+
+        cursor.execute(
+            f'''
+            SELECT
+                COUNT(*) AS trades,
+                SUM(CASE WHEN net_profit > 0 THEN 1 ELSE 0 END) AS wins,
+                SUM(CASE WHEN net_profit < 0 THEN 1 ELSE 0 END) AS losses,
+                SUM(net_profit) AS net_pnl,
+                SUM(CASE WHEN net_profit > 0 THEN net_profit ELSE 0 END) AS gross_profit,
+                SUM(CASE WHEN net_profit < 0 THEN ABS(net_profit) ELSE 0 END) AS gross_loss
+            FROM closed_trades
+            WHERE {" AND ".join(where)}
+            ''',
+            tuple(params),
+        )
+        row = cursor.fetchone() or (0, 0, 0, 0.0, 0.0, 0.0)
+        trades, wins, losses, net_pnl, gross_profit, gross_loss = row
+        trades = int(trades or 0)
+        wins = int(wins or 0)
+        losses = int(losses or 0)
+        net_pnl = float(net_pnl or 0.0)
+        gross_profit = float(gross_profit or 0.0)
+        gross_loss = float(gross_loss or 0.0)
+        win_rate = (wins / trades) if trades > 0 else 0.0
+        pf = (gross_profit / gross_loss) if gross_loss > 0 else (999.0 if gross_profit > 0 and trades > 0 else 0.0)
+        return {
+            "trades": trades,
+            "wins": wins,
+            "losses": losses,
+            "win_rate": win_rate,
+            "net_pnl": net_pnl,
+            "gross_profit": gross_profit,
+            "gross_loss": gross_loss,
+            "profit_factor": pf,
+        }
+
+    def get_shadow_model_performance(
+        self,
+        *,
+        symbol: Optional[str] = None,
+        model: Optional[str] = None,
+        lookback: int = 20,
+    ) -> Dict:
+        """
+        Recent shadow performance for a symbol/model combination.
+        """
+        cursor = self.conn.cursor()
+        where = ["outcome != 0"]
+        params: List[object] = []
+
+        if symbol:
+            where.append("UPPER(symbol) = ?")
+            params.append(str(symbol).upper())
+        if model:
+            where.append("UPPER(model) = ?")
+            params.append(str(model).upper())
+
+        params.append(max(1, int(lookback)))
+        cursor.execute(
+            f'''
+            SELECT
+                COUNT(*) AS trades,
+                SUM(CASE WHEN outcome = 1 THEN 1 ELSE 0 END) AS wins,
+                SUM(CASE WHEN outcome = -1 THEN 1 ELSE 0 END) AS losses,
+                SUM(COALESCE(pnl_r, 0)) AS net_r
+            FROM (
+                SELECT outcome, pnl_r
+                FROM shadow_experience
+                WHERE {" AND ".join(where)}
+                ORDER BY id DESC
+                LIMIT ?
+            ) recent_shadow
+            ''',
+            tuple(params),
+        )
+        row = cursor.fetchone() or (0, 0, 0, 0.0)
+        trades, wins, losses, net_r = row
+        trades = int(trades or 0)
+        wins = int(wins or 0)
+        losses = int(losses or 0)
+        net_r = float(net_r or 0.0)
+        win_rate = (wins / trades) if trades > 0 else 0.0
+        return {
+            "trades": trades,
+            "wins": wins,
+            "losses": losses,
+            "win_rate": win_rate,
+            "net_r": net_r,
+        }
 
     def upsert_symbol_tuner_snapshot(
         self,
@@ -810,7 +935,9 @@ class DataStore:
                     continue
                 if float(rec["profit_factor"] or 0.0) < float(min_profit_factor):
                     continue
-                if float(rec["max_dd"] or 999.0) > float(max_drawdown_pct):
+                max_dd_val = rec.get("max_dd")
+                max_dd_val = 999.0 if max_dd_val is None else float(max_dd_val)
+                if max_dd_val > float(max_drawdown_pct):
                     continue
                 if require_positive_pnl and float(rec["net_pnl"] or 0.0) <= 0.0:
                     continue

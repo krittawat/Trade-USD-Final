@@ -1,0 +1,52 @@
+[WARN] DuckDB unavailable, fallback to MT5: IO Error: Cannot open file "c:\vibecode\trade\backend\data\duckdb\analytics.duckdb": The process cannot access the file because it is being used by another process.
+
+
+File is already open in 
+C:\Users\PCMD\AppData\Local\Programs\Python\Python312\python.exe (PID 23572)
+====================================================================================================
+Backtest Matrix Start | run_id=bt360_20260311_094802_020288 | days=30 | symbols=1 | tfs=1 | engines=trader | strategy=rapid_pullback
+Data source: auto (C:\VibeCode\Trade\backend\data\duckdb\analytics.duckdb)
+Total jobs: 1 | requested_equity=300.0 | effective_equity=1000.0 | equity_floor=1000.0 | lookback=100 | hold=50 | min_trades=1
+====================================================================================================
+  [MT5] Connected. Fetching 30 days for XAUUSDm (M5)...
+  [DATA] Loaded 6053 bars from MT5 for XAUUSDm (M5)
+
+[1/1] XAUUSD M5 engine=trader
+  [MT5] symbol details for XAUUSDm: spread=360 point=0.001 tick_size=0.001
+  [WARN] MT5 spread 360pts is off-session inflated -> capped to 50pts
+
+============================================================
+  OPUS Backtest V2 - XAUUSD
+  Bars: 1200 | Lookback: 100 | Hold: 50
+  Timeframe: M5 | Strategy: rapid_pullback
+  Initial Equity: $1000.00
+  Spread sim: 50 points
+============================================================
+
+  Computing features on full dataset...
+  Features computed. Starting walk-forward...
+
+
+============================================================
+  BACKTEST RESULTS - XAUUSD
+============================================================
+  Total Signals Generated : 0
+  Signals Blocked by Risk : 0
+  Trades Executed         : 0
+  Win Rate                : 0%
+  Profit Factor           : 0
+  Max Drawdown            : 0%
+  Net P&L                 : $0
+  Final Equity            : $1000.0
+============================================================
+
+====================================================================================================
+BEST BY SYMBOL (TOP-TF CANDIDATES)
+====================================================================================================
+ XAUUSD | TF= M5 | rank= 1 | engine=trader | trades=   0 | WR=    0% | PF=    0 | PnL=         0 | DD=    0% | score=   -32.0 | PROD=NO
+
+TOP 20 OVERALL
+ XAUUSD  M5 [trader] | trades=   0 | WR=    0% | PF=    0 | PnL=         0 | DD=    0% | score=   -32.0
+
+Saved report: d:\VibeCode\Trade\tmp\backtest_matrix_360_20260311_094848.json
+Persisted run_id: bt360_20260311_094802_020288 | ranked_rows=1

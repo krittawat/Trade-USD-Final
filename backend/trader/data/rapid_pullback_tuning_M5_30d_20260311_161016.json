@@ -1,0 +1,68 @@
+[
+  {
+    "symbol": "XAUUSD",
+    "timeframe": "M5",
+    "days": 30,
+    "lookback": 4,
+    "touch_atr": 0.28,
+    "sl_buffer_atr": 0.16,
+    "tp1_rr": 1.2,
+    "min_body_ratio": 0.28,
+    "min_vol_ratio": 0.92,
+    "min_roc": 0.04,
+    "min_di_gap": 1.0,
+    "total_signals": 62,
+    "blocked_signals": 59,
+    "trades": 3,
+    "win_rate": 0.0,
+    "profit_factor": 0.0,
+    "net_pnl": -34.2829,
+    "max_dd": 3.428,
+    "final_equity": 965.7171,
+    "strict_pass": false,
+    "rank_key": [
+      0,
+      -34.2829,
+      0.0,
+      0.0,
+      3,
+      -3.428
+    ],
+    "baseline": {
+      "symbol": "XAUUSD",
+      "timeframe": "M5",
+      "days": 30,
+      "lookback": 4,
+      "touch_atr": 0.26,
+      "sl_buffer_atr": 0.2,
+      "tp1_rr": 1.4,
+      "min_body_ratio": 0.4,
+      "min_vol_ratio": 1.08,
+      "min_roc": 0.03,
+      "min_di_gap": 1.8,
+      "total_signals": 21,
+      "blocked_signals": 9,
+      "trades": 12,
+      "win_rate": 33.33,
+      "profit_factor": 0.585,
+      "net_pnl": -39.4498,
+      "max_dd": 4.669,
+      "final_equity": 960.5501,
+      "strict_pass": false,
+      "rank_key": [
+        0,
+        -39.4498,
+        0.585,
+        33.33,
+        12,
+        -4.669
+      ]
+    },
+    "improvement": {
+      "net_pnl_delta": 5.1669,
+      "pf_delta": -0.585,
+      "wr_delta": -33.33,
+      "trades_delta": -9
+    }
+  }
+]

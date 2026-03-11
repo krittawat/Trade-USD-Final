@@ -1,0 +1,46 @@
+C:\VibeCode\Trade\backend\trader\scripts\run_backtest.py:1: SyntaxWarning: invalid escape sequence '\V'
+  """
+  [MT5] Connected. Fetching 10 days for USOILm (M5)...
+  [DATA] Loaded 1876 bars from MT5 for USOILm (M5)
+  [MT5] real spread for USOILm: 20 points
+  [OK] Using MT5 real spread: 20 points
+
+============================================================
+  OPUS Backtest V2 - USOIL
+  Bars: 1876 | Lookback: 100 | Hold: 50
+  Timeframe: M5 | Strategy: rapid_pullback
+  Initial Equity: $100.00
+  Spread sim: 20 points
+============================================================
+
+  Computing features on full dataset...
+  Features computed. Starting walk-forward...
+
+[2m23:38:26[0m [97mBRAIN [USOIL] Deep Brain loaded from models using model: USOILm[0m
+[2m23:38:26[0m [97mConnected to MT5 successfully.[0m
+[2m23:38:36[0m [97m🧠 AI ENGINE APPROVED: RAPID_PULLBACK | ML Probability: 69.2% | RR=1.55 | Score=0.674 | VolR=1.0 OBV=▲[0m
+[2m23:38:36[0m [97m  💰 CAPITAL: Bal=$0.00 Eq=$100.00 Free=$0.00[0m
+[2m23:39:18[0m [97m🧠 AI ENGINE APPROVED: RAPID_PULLBACK | ML Probability: 71.5% | RR=1.55 | Score=0.718 | VolR=1.4 OBV=▼[0m
+[2m23:39:18[0m [97m  💰 CAPITAL: Bal=$0.00 Eq=$104.96 Free=$0.00[0m
+
+============================================================
+  BACKTEST RESULTS - USOIL
+============================================================
+  Total Signals Generated : 2
+  Signals Blocked by Risk : 0
+  Trades Executed         : 2
+  Win Rate                : 100.0%
+  Profit Factor           : 25641100000.0
+  Max Drawdown            : 0.0%
+  Net P&L                 : $25.6411
+  Final Equity            : $125.6411
+============================================================
+
+  [ANALYSIS] Per-Model Breakdown:
+    [RAPID_PULLBACK] Trades=2 | WR=100.0% | PF=25641100000.00 | Net=$25.6411
+
+  Last 10 trades:
+    [WIN] Bar 398: BUY RAPID_PULLBACK [Strong Trend (U] | PnL=$4.9634 | Conf=0.71
+    [WIN] Bar 1597: SELL RAPID_PULLBACK [Weak Trend (Dow] | PnL=$20.6777 | Conf=0.77
+
+  [FILE] Results saved to d:/VibeCode/Trade/backend/trader/data/backtest_USOIL_rapid_pullback_M5_10d_20260310_233926.json

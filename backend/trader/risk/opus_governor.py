@@ -14,9 +14,11 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
+from backend.trader.config.paths import SETTINGS_PATH
+
 logger = logging.getLogger("opus_logger")
 
-with open("d:/VibeCode/Trade/backend/trader/config/settings.json") as _f:
+with open(SETTINGS_PATH, encoding="utf-8") as _f:
     _CFG = json.load(_f)
     _OPUS_CFG = _CFG.get("opus_governor", {})
     _RISK_CFG = _CFG.get("risk_limits", {})

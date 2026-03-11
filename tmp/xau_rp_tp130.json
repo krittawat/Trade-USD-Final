@@ -1,0 +1,20 @@
+{
+  "rapid_pullback": {
+    "lookback": 4,
+    "touch_atr": 0.26,
+    "sl_buffer_atr": 0.20,
+    "min_sl_atr": 0.65,
+    "max_sl_atr": 2.40,
+    "tp1_rr": 1.30,
+    "tp2_rr": 1.80,
+    "tp3_rr": 2.30,
+    "min_body_ratio": 0.40,
+    "min_vol_ratio": 1.08,
+    "min_roc": 0.03,
+    "min_di_gap": 1.80,
+    "min_rsi_buy": 51.0,
+    "max_rsi_buy": 74.0,
+    "min_rsi_sell": 26.0,
+    "max_rsi_sell": 49.0
+  }
+}

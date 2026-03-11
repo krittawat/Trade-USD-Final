@@ -8,6 +8,7 @@ from pathlib import Path
 
 # Ensure project root is on path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import numpy as np
 import pandas as pd
@@ -177,13 +178,88 @@ class TestEasyTrend:
 
 
 # ═══════════════════════════════════════════════════
+# Test: Rapid Pullback Strategy
+# ═══════════════════════════════════════════════════
+class TestRapidPullback:
+    def test_returns_valid_or_none(self):
+        from backend.trader.strategy.rapid_pullback import signal_rapid_pullback
+        df = _enrich(_make_df(300, trend="up"))
+        ctx = {"symbol": "XAUUSD", "regime_result": {"regime": "Strong Trend (Up)", "confidence": 0.8}}
+        sig = signal_rapid_pullback(df, ctx)
+        if sig is not None:
+            assert sig["model"] == "RAPID_PULLBACK"
+            assert sig["sl"] != 0
+            assert sig["tp1"] > sig["entry_price"]
+
+    def test_buy_setup_can_trigger(self):
+        from backend.trader.strategy.rapid_pullback import signal_rapid_pullback
+
+        rows = []
+        for i in range(90):
+            base = 100.0 + (i * 0.12)
+            rows.append({
+                "open": base - 0.10,
+                "high": base + 0.30,
+                "low": base - 0.20,
+                "close": base + 0.05,
+                "atr": 1.0,
+                "ema_fast": base - 0.15,
+                "ema_slow": base - 0.35,
+                "ema_200": base - 1.20,
+                "vwap": base - 0.10,
+                "rsi": 60.0,
+                "roc_5": 0.20,
+                "body_ratio": 0.50,
+                "vol_ratio": 1.20,
+                "plus_di": 28.0,
+                "minus_di": 16.0,
+                "is_uptrend": True,
+                "is_downtrend": False,
+                "lower_wick_ratio": 0.22,
+                "upper_wick_ratio": 0.08,
+            })
+
+        rows[-2].update({"high": 110.40, "low": 109.75, "close": 110.10, "ema_fast": 109.95, "vwap": 109.90})
+        rows[-1].update({
+            "open": 110.15,
+            "high": 111.10,
+            "low": 109.92,
+            "close": 110.85,
+            "ema_fast": 110.20,
+            "ema_slow": 109.80,
+            "ema_200": 108.80,
+            "vwap": 110.10,
+            "rsi": 62.0,
+            "roc_5": 0.28,
+            "body_ratio": 0.58,
+            "vol_ratio": 1.35,
+            "plus_di": 30.0,
+            "minus_di": 14.0,
+            "lower_wick_ratio": 0.24,
+            "upper_wick_ratio": 0.10,
+            "is_uptrend": True,
+            "is_downtrend": False,
+        })
+        df = pd.DataFrame(rows)
+        sig = signal_rapid_pullback(df, {"symbol": "XAUUSD", "regime_result": {"regime": "Strong Trend (Up)"}})
+        assert sig is not None
+        assert sig["side"] == "BUY"
+        assert sig["model"] == "RAPID_PULLBACK"
+        assert sig["sl"] < sig["entry_price"] < sig["tp1"]
+
+
+# ═══════════════════════════════════════════════════
 # Test: Selector Integration
 # ═══════════════════════════════════════════════════
 class TestSelector:
     def test_selector_routes_without_crash(self):
         from backend.trader.strategy.selector import select_and_generate_signal
         df = _enrich(_make_df(300, trend="up"))
-        ctx = {"symbol": "XAUUSD", "regime_result": {"regime": "Trend (Up)", "confidence": 0.7}}
+        ctx = {
+            "symbol": "XAUUSD",
+            "regime_result": {"regime": "Trend (Up)", "confidence": 0.7},
+            "enable_rapid_pullback": True,
+        }
         events = []
         sig = select_and_generate_signal(df, ctx, events)
         # May or may not generate signal — just verify no crash
@@ -198,6 +274,17 @@ class TestSelector:
         ctx = {"symbol": "XAUUSD", "regime_result": {"regime": "Volatility Compression", "confidence": 0.8}}
         sig = select_and_generate_signal(df, ctx, [])
         assert sig is None, "Compression regime should block all signals"
+
+    def test_strategy_whitelist_filters_candidates(self):
+        from backend.trader.strategy.selector import _filter_candidate_models
+
+        candidates = [
+            {"model": "RAPID_PULLBACK", "side": "BUY"},
+            {"model": "GOLD_ELITE", "side": "BUY"},
+        ]
+        out = _filter_candidate_models(candidates, {"strategy_whitelist": ["rapid_pullback"]})
+        assert len(out) == 1
+        assert out[0]["model"] == "RAPID_PULLBACK"
 
 
 if __name__ == "__main__":

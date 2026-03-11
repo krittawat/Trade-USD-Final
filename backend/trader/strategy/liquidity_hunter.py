@@ -4,8 +4,10 @@ Liquidity Hunter V4 - Conservative sweep confirmation to reduce stop-loss churn.
 import json
 import pandas as pd
 
+from backend.trader.config.paths import SETTINGS_PATH
+
 # Load strategy params from config
-with open("d:/VibeCode/Trade/backend/trader/config/settings.json") as _f:
+with open(SETTINGS_PATH, encoding="utf-8") as _f:
     _STRATEGY_CFG = json.load(_f).get("strategy", {})
 
 SL_ATR_MULT = _STRATEGY_CFG.get("sl_atr_multiplier", 1.8)
