@@ -429,58 +429,35 @@ class AlphaV7ICTStrategy(BaseStrategy):
         if require_prime and not session_ctx.is_trade_window:
             return self.create_hold(symbol, f"ICT outside session window ({session_ctx.label})")
 
-        # Indicators: Check if pre-calculated in dataframe columns (Optimization for Grid Search)
-        if "atr" in frame.columns:
-            atr_series = frame["atr"]
-            atr_now = self._safe_float(atr_series.iloc[-1], 0.0)
-        else:
-            atr_series = atr(frame["high"], frame["low"], frame["close"], int(self.p.get("adx_length", 14)))
-            atr_now = self._safe_float(atr_series.iloc[-1], 0.0)
-            
+        # Recompute local indicators to keep behavior deterministic across
+        # raw OHLC feeds and pre-featured trader-engine dataframes.
+        atr_series = atr(frame["high"], frame["low"], frame["close"], int(self.p.get("adx_length", 14)))
+        atr_now = self._safe_float(atr_series.iloc[-1], 0.0)
+             
         if atr_now <= 0:
             return self.create_hold(symbol, "ICT ATR unavailable")
 
-        if "ema_fast" in frame.columns:
-            ema_fast = float(frame["ema_fast"].iloc[-1])
-            ema_slow = float(frame["ema_slow"].iloc[-1])
-            ema_trend = float(frame["ema_trend"].iloc[-1])
-        else:
-            ema_fast = float(ema(frame["close"], int(self.p.get("ema_fast", 20))).iloc[-1])
-            ema_slow = float(ema(frame["close"], int(self.p.get("ema_slow", 50))).iloc[-1])
-            ema_trend = float(ema(frame["close"], ema_len).iloc[-1])
+        ema_fast = float(ema(frame["close"], int(self.p.get("ema_fast", 20))).iloc[-1])
+        ema_slow = float(ema(frame["close"], int(self.p.get("ema_slow", 50))).iloc[-1])
+        ema_trend = float(ema(frame["close"], ema_len).iloc[-1])
 
-        if "adx" in frame.columns:
-            adx_now = self._safe_float(frame["adx"].iloc[-1], 0.0)
-            plus_di = self._safe_float(frame["plus_di"].iloc[-1], 0.0)
-            minus_di = self._safe_float(frame["minus_di"].iloc[-1], 0.0)
-        else:
-            adx_len = int(self.p.get("adx_length", 14))
-            adx_df = adx(frame["high"], frame["low"], frame["close"], adx_len)
-            adx_now = self._safe_float(adx_df[f"ADX_{adx_len}"].iloc[-1], 0.0)
-            plus_di = self._safe_float(adx_df[f"DMP_{adx_len}"].iloc[-1], 0.0)
-            minus_di = self._safe_float(adx_df[f"DMN_{adx_len}"].iloc[-1], 0.0)
+        adx_len = int(self.p.get("adx_length", 14))
+        adx_df = adx(frame["high"], frame["low"], frame["close"], adx_len)
+        adx_now = self._safe_float(adx_df[f"ADX_{adx_len}"].iloc[-1], 0.0)
+        plus_di = self._safe_float(adx_df[f"DMP_{adx_len}"].iloc[-1], 0.0)
+        minus_di = self._safe_float(adx_df[f"DMN_{adx_len}"].iloc[-1], 0.0)
 
-        if "rsi" in frame.columns:
-            rsi_now = self._safe_float(frame["rsi"].iloc[-1], 0.0)
-        else:
-            rsi_len = int(self.p.get("rsi_length", 14))
-            rsi_now = self._safe_float(rsi(frame["close"], rsi_len).iloc[-1], 0.0)
+        rsi_len = int(self.p.get("rsi_length", 14))
+        rsi_now = self._safe_float(rsi(frame["close"], rsi_len).iloc[-1], 0.0)
 
-        if "macd_hist" in frame.columns:
-            macd_hist = self._safe_float(frame["macd_hist"].iloc[-1], 0.0)
-        else:
-            m_fast = int(self.p.get("macd_fast", 12))
-            m_slow = int(self.p.get("macd_slow", 26))
-            m_sig = int(self.p.get("macd_signal", 9))
-            macd_df = macd(frame["close"], m_fast, m_slow, m_sig)
-            macd_hist = self._safe_float(macd_df[f"MACDh_{m_fast}_{m_slow}_{m_sig}"].iloc[-1], 0.0)
+        m_fast = int(self.p.get("macd_fast", 12))
+        m_slow = int(self.p.get("macd_slow", 26))
+        m_sig = int(self.p.get("macd_signal", 9))
+        macd_df = macd(frame["close"], m_fast, m_slow, m_sig)
+        macd_hist = self._safe_float(macd_df[f"MACDh_{m_fast}_{m_slow}_{m_sig}"].iloc[-1], 0.0)
 
-        if "bull_power" in frame.columns:
-            bull_power = self._safe_float(frame["bull_power"].iloc[-1], 0.0)
-            bear_power = self._safe_float(frame["bear_power"].iloc[-1], 0.0)
-        else:
-            bull_power = self._safe_float(bulls_power(frame["high"], frame["close"], 13).iloc[-1], 0.0)
-            bear_power = self._safe_float(bears_power(frame["low"], frame["close"], 13).iloc[-1], 0.0)
+        bull_power = self._safe_float(bulls_power(frame["high"], frame["close"], 13).iloc[-1], 0.0)
+        bear_power = self._safe_float(bears_power(frame["low"], frame["close"], 13).iloc[-1], 0.0)
 
         range_lookback = int(self.p.get("range_lookback", 36))
         dealing_range = frame.iloc[-range_lookback:]
@@ -534,8 +511,10 @@ class AlphaV7ICTStrategy(BaseStrategy):
         flow_body_ratio = float(self.p.get("flow_body_ratio", 0.62))
         buy_flow_ok = buy_disp is not None and buy_disp["body_ratio"] >= flow_body_ratio
         sell_flow_ok = sell_disp is not None and sell_disp["body_ratio"] >= flow_body_ratio
+        buy_bias_ok = buy_major or buy_trend or buy_counter_ok
+        sell_bias_ok = sell_major or sell_trend or sell_counter_ok
 
-        if buy_sweep and buy_disp and buy_fvg and buy_retest and (buy_momentum or buy_flow_ok) and is_discount and (buy_major or buy_counter_ok):
+        if buy_sweep and buy_disp and buy_fvg and buy_retest and (buy_momentum or buy_flow_ok) and is_discount and buy_bias_ok:
             return self._build_trade(
                 frame=frame,
                 side="BUY",
@@ -551,7 +530,7 @@ class AlphaV7ICTStrategy(BaseStrategy):
                 current_close=current_close,
             )
 
-        if sell_sweep and sell_disp and sell_fvg and sell_retest and (sell_momentum or sell_flow_ok) and is_premium and (sell_major or sell_counter_ok):
+        if sell_sweep and sell_disp and sell_fvg and sell_retest and (sell_momentum or sell_flow_ok) and is_premium and sell_bias_ok:
             return self._build_trade(
                 frame=frame,
                 side="SELL",

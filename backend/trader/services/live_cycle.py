@@ -32,6 +32,7 @@ def handle_safety_pause(
     maintenance_reason: str,
     news_blocked: bool,
     lead_symbol_news_safe: bool,
+    allow_news_cycle: bool = False,
     manage_positions: Callable[[], int],
     logger,
     sleep_fn: Callable[[float], None] = time.sleep,
@@ -48,7 +49,7 @@ def handle_safety_pause(
         sleep_fn(sleep_seconds)
         return True
 
-    if news_blocked and not lead_symbol_news_safe:
+    if news_blocked and not lead_symbol_news_safe and not allow_news_cycle:
         run_live_position_management(
             mode=mode,
             manage_positions=manage_positions,

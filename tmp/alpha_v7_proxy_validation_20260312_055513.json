@@ -1,0 +1,435 @@
+{
+  "generated_at": "2026-03-12T05:55:13.620459+00:00",
+  "mode": "raw_alpha_v7_proxy",
+  "symbols": [
+    "XAUUSD",
+    "BTCUSD"
+  ],
+  "timeframes": [
+    "M5",
+    "M15",
+    "H1"
+  ],
+  "window_days": [
+    30,
+    90
+  ],
+  "train_days": 60,
+  "test_days": 30,
+  "rows": [
+    {
+      "symbol": "XAUUSD",
+      "timeframe": "M5",
+      "windows": {
+        "30d": {
+          "start": "2026-02-10T04:50:00+00:00",
+          "end": "2026-03-12T04:50:00+00:00",
+          "bars": 6054,
+          "score": 70.2699,
+          "metrics": {
+            "total_trades": 14,
+            "wins": 7,
+            "losses": 7,
+            "win_rate": 50.0,
+            "profit_factor": 1.47,
+            "max_dd": 37.95,
+            "net_pnl": 64.8386,
+            "final_equity": 184.8386,
+            "requested_initial_equity": 100.0,
+            "effective_initial_equity": 120.0
+          }
+        },
+        "90d": {
+          "start": "2025-12-12T04:50:00+00:00",
+          "end": "2026-03-12T04:50:00+00:00",
+          "bars": 17013,
+          "score": 227.772,
+          "metrics": {
+            "total_trades": 41,
+            "wins": 22,
+            "losses": 19,
+            "win_rate": 53.7,
+            "profit_factor": 1.77,
+            "max_dd": 31.61,
+            "net_pnl": 211.3361,
+            "final_equity": 331.3361,
+            "requested_initial_equity": 100.0,
+            "effective_initial_equity": 120.0
+          }
+        }
+      },
+      "train": {
+        "total_trades": 27,
+        "wins": 15,
+        "losses": 12,
+        "win_rate": 55.6,
+        "profit_factor": 2.07,
+        "max_dd": 31.61,
+        "net_pnl": 146.4975,
+        "final_equity": 266.4975,
+        "requested_initial_equity": 100.0,
+        "effective_initial_equity": 120.0
+      },
+      "test": {
+        "total_trades": 14,
+        "wins": 7,
+        "losses": 7,
+        "win_rate": 50.0,
+        "profit_factor": 1.47,
+        "max_dd": 37.95,
+        "net_pnl": 64.8386,
+        "final_equity": 184.8386,
+        "requested_initial_equity": 100.0,
+        "effective_initial_equity": 120.0
+      },
+      "train_score": 163.3829,
+      "test_score": 70.2699,
+      "edge_persisted": true
+    },
+    {
+      "symbol": "BTCUSD",
+      "timeframe": "M5",
+      "windows": {
+        "30d": {
+          "start": "2026-02-10T05:10:00+00:00",
+          "end": "2026-03-12T05:10:00+00:00",
+          "bars": 8640,
+          "score": 44.8542,
+          "metrics": {
+            "total_trades": 7,
+            "wins": 4,
+            "losses": 3,
+            "win_rate": 57.1,
+            "profit_factor": 1.99,
+            "max_dd": 6.9,
+            "net_pnl": 12.3377,
+            "final_equity": 112.3377,
+            "requested_initial_equity": 100.0,
+            "effective_initial_equity": 100.0
+          }
+        },
+        "90d": {
+          "start": "2025-12-12T05:10:00+00:00",
+          "end": "2026-03-12T05:10:00+00:00",
+          "bars": 25916,
+          "score": 24.3524,
+          "metrics": {
+            "total_trades": 23,
+            "wins": 9,
+            "losses": 14,
+            "win_rate": 39.1,
+            "profit_factor": 1.09,
+            "max_dd": 17.42,
+            "net_pnl": 3.5113,
+            "final_equity": 103.5113,
+            "requested_initial_equity": 100.0,
+            "effective_initial_equity": 100.0
+          }
+        }
+      },
+      "train": {
+        "total_trades": 16,
+        "wins": 5,
+        "losses": 11,
+        "win_rate": 31.2,
+        "profit_factor": 0.69,
+        "max_dd": 17.42,
+        "net_pnl": -8.8264,
+        "final_equity": 91.1736,
+        "requested_initial_equity": 100.0,
+        "effective_initial_equity": 100.0
+      },
+      "test": {
+        "total_trades": 7,
+        "wins": 4,
+        "losses": 3,
+        "win_rate": 57.1,
+        "profit_factor": 1.99,
+        "max_dd": 6.9,
+        "net_pnl": 12.3377,
+        "final_equity": 112.3377,
+        "requested_initial_equity": 100.0,
+        "effective_initial_equity": 100.0
+      },
+      "train_score": 4.8891,
+      "test_score": 44.8542,
+      "edge_persisted": false
+    },
+    {
+      "symbol": "XAUUSD",
+      "timeframe": "M15",
+      "windows": {
+        "30d": {
+          "start": "2026-02-10T05:00:00+00:00",
+          "end": "2026-03-12T05:00:00+00:00",
+          "bars": 2019,
+          "score": 33.7615,
+          "metrics": {
+            "total_trades": 2,
+            "wins": 1,
+            "losses": 1,
+            "win_rate": 50.0,
+            "profit_factor": 1.79,
+            "max_dd": 19.6,
+            "net_pnl": 28.6792,
+            "final_equity": 148.6792,
+            "requested_initial_equity": 100.0,
+            "effective_initial_equity": 120.0
+          }
+        },
+        "90d": {
+          "start": "2025-12-12T05:00:00+00:00",
+          "end": "2026-03-12T05:00:00+00:00",
+          "bars": 5675,
+          "score": -39.0928,
+          "metrics": {
+            "total_trades": 9,
+            "wins": 3,
+            "losses": 6,
+            "win_rate": 33.3,
+            "profit_factor": 0.83,
+            "max_dd": 61.87,
+            "net_pnl": -33.527,
+            "final_equity": 86.4729,
+            "requested_initial_equity": 100.0,
+            "effective_initial_equity": 120.0
+          }
+        }
+      },
+      "train": {
+        "total_trades": 7,
+        "wins": 2,
+        "losses": 5,
+        "win_rate": 28.6,
+        "profit_factor": 0.63,
+        "max_dd": 61.87,
+        "net_pnl": -62.2062,
+        "final_equity": 57.7937,
+        "requested_initial_equity": 100.0,
+        "effective_initial_equity": 120.0
+      },
+      "test": {
+        "total_trades": 2,
+        "wins": 1,
+        "losses": 1,
+        "win_rate": 50.0,
+        "profit_factor": 1.79,
+        "max_dd": 19.6,
+        "net_pnl": 28.6792,
+        "final_equity": 148.6792,
+        "requested_initial_equity": 100.0,
+        "effective_initial_equity": 120.0
+      },
+      "train_score": -62.8207,
+      "test_score": 33.7615,
+      "edge_persisted": false
+    },
+    {
+      "symbol": "BTCUSD",
+      "timeframe": "M15",
+      "windows": {
+        "30d": {
+          "start": "2026-02-10T05:30:00+00:00",
+          "end": "2026-03-12T05:30:00+00:00",
+          "bars": 2881,
+          "score": -3.1302,
+          "metrics": {
+            "total_trades": 4,
+            "wins": 1,
+            "losses": 3,
+            "win_rate": 25.0,
+            "profit_factor": 0.54,
+            "max_dd": 20.13,
+            "net_pnl": -10.4664,
+            "final_equity": 89.5337,
+            "requested_initial_equity": 100.0,
+            "effective_initial_equity": 100.0
+          }
+        },
+        "90d": {
+          "start": "2025-12-12T05:30:00+00:00",
+          "end": "2026-03-12T05:30:00+00:00",
+          "bars": 8641,
+          "score": 18.9085,
+          "metrics": {
+            "total_trades": 11,
+            "wins": 5,
+            "losses": 6,
+            "win_rate": 45.5,
+            "profit_factor": 1.06,
+            "max_dd": 25.23,
+            "net_pnl": 3.1042,
+            "final_equity": 103.1043,
+            "requested_initial_equity": 100.0,
+            "effective_initial_equity": 100.0
+          }
+        }
+      },
+      "train": {
+        "total_trades": 6,
+        "wins": 4,
+        "losses": 2,
+        "win_rate": 66.7,
+        "profit_factor": 2.45,
+        "max_dd": 11.96,
+        "net_pnl": 23.9744,
+        "final_equity": 123.9744,
+        "requested_initial_equity": 100.0,
+        "effective_initial_equity": 100.0
+      },
+      "test": {
+        "total_trades": 4,
+        "wins": 1,
+        "losses": 3,
+        "win_rate": 25.0,
+        "profit_factor": 0.54,
+        "max_dd": 20.13,
+        "net_pnl": -10.4664,
+        "final_equity": 89.5337,
+        "requested_initial_equity": 100.0,
+        "effective_initial_equity": 100.0
+      },
+      "train_score": 56.3306,
+      "test_score": -3.1302,
+      "edge_persisted": false
+    },
+    {
+      "symbol": "XAUUSD",
+      "timeframe": "H1",
+      "windows": {
+        "30d": {
+          "start": "2026-02-10T05:00:00+00:00",
+          "end": "2026-03-12T05:00:00+00:00",
+          "bars": 506,
+          "score": -22.0,
+          "metrics": {
+            "total_trades": 0,
+            "wins": 0,
+            "losses": 0,
+            "win_rate": 0.0,
+            "profit_factor": 0.0,
+            "max_dd": 0.0,
+            "net_pnl": 0,
+            "final_equity": 120.0,
+            "requested_initial_equity": 100.0,
+            "effective_initial_equity": 120.0
+          }
+        },
+        "90d": {
+          "start": "2025-12-12T05:00:00+00:00",
+          "end": "2026-03-12T05:00:00+00:00",
+          "bars": 1421,
+          "score": -22.0,
+          "metrics": {
+            "total_trades": 0,
+            "wins": 0,
+            "losses": 0,
+            "win_rate": 0.0,
+            "profit_factor": 0.0,
+            "max_dd": 0.0,
+            "net_pnl": 0,
+            "final_equity": 120.0,
+            "requested_initial_equity": 100.0,
+            "effective_initial_equity": 120.0
+          }
+        }
+      },
+      "train": {
+        "total_trades": 0,
+        "wins": 0,
+        "losses": 0,
+        "win_rate": 0.0,
+        "profit_factor": 0.0,
+        "max_dd": 0.0,
+        "net_pnl": 0,
+        "final_equity": 120.0,
+        "requested_initial_equity": 100.0,
+        "effective_initial_equity": 120.0
+      },
+      "test": {
+        "total_trades": 0,
+        "wins": 0,
+        "losses": 0,
+        "win_rate": 0.0,
+        "profit_factor": 0.0,
+        "max_dd": 0.0,
+        "net_pnl": 0,
+        "final_equity": 120.0,
+        "requested_initial_equity": 100.0,
+        "effective_initial_equity": 120.0
+      },
+      "train_score": -22.0,
+      "test_score": -22.0,
+      "edge_persisted": false
+    },
+    {
+      "symbol": "BTCUSD",
+      "timeframe": "H1",
+      "windows": {
+        "30d": {
+          "start": "2026-02-10T05:00:00+00:00",
+          "end": "2026-03-12T05:00:00+00:00",
+          "bars": 721,
+          "score": -22.0,
+          "metrics": {
+            "total_trades": 0,
+            "wins": 0,
+            "losses": 0,
+            "win_rate": 0.0,
+            "profit_factor": 0.0,
+            "max_dd": 0.0,
+            "net_pnl": 0,
+            "final_equity": 100.0,
+            "requested_initial_equity": 100.0,
+            "effective_initial_equity": 100.0
+          }
+        },
+        "90d": {
+          "start": "2025-12-12T05:00:00+00:00",
+          "end": "2026-03-12T05:00:00+00:00",
+          "bars": 2161,
+          "score": -22.0,
+          "metrics": {
+            "total_trades": 0,
+            "wins": 0,
+            "losses": 0,
+            "win_rate": 0.0,
+            "profit_factor": 0.0,
+            "max_dd": 0.0,
+            "net_pnl": 0,
+            "final_equity": 100.0,
+            "requested_initial_equity": 100.0,
+            "effective_initial_equity": 100.0
+          }
+        }
+      },
+      "train": {
+        "total_trades": 0,
+        "wins": 0,
+        "losses": 0,
+        "win_rate": 0.0,
+        "profit_factor": 0.0,
+        "max_dd": 0.0,
+        "net_pnl": 0,
+        "final_equity": 100.0,
+        "requested_initial_equity": 100.0,
+        "effective_initial_equity": 100.0
+      },
+      "test": {
+        "total_trades": 0,
+        "wins": 0,
+        "losses": 0,
+        "win_rate": 0.0,
+        "profit_factor": 0.0,
+        "max_dd": 0.0,
+        "net_pnl": 0,
+        "final_equity": 100.0,
+        "requested_initial_equity": 100.0,
+        "effective_initial_equity": 100.0
+      },
+      "train_score": -22.0,
+      "test_score": -22.0,
+      "edge_persisted": false
+    }
+  ]
+}

@@ -87,14 +87,20 @@ class OmniscientOracleStrategy(BaseStrategy):
         # Update ChartIntelligence params
         self._ci.params["adaptive_absorption"] = adaptive
 
-    def analyze(self, **kwargs) -> StrategyDecision:
-        df = kwargs.get("df")
-        symbol = kwargs.get("symbol", self.symbol)
+    def analyze(
+        self,
+        candles: pd.DataFrame,
+        profile: SymbolProfile,
+        regime: RegimeType = RegimeType.UNKNOWN,
+        **kwargs
+    ) -> Decision:
+        symbol = profile.symbol
         current_session = kwargs.get("current_session", "")
 
-        if df is None or len(df) < 60:
-            return StrategyDecision(
-                signal="NO_TRADE",
+        if candles is None or len(candles) < 60:
+            return Decision(
+                symbol=symbol,
+                action=Action.HOLD,
                 reason="Insufficient data for Oracle analysis",
             )
 
@@ -106,18 +112,18 @@ class OmniscientOracleStrategy(BaseStrategy):
             )
 
         # Auto-tune absorption thresholds
-        self._auto_tune_absorption(df, symbol)
+        self._auto_tune_absorption(candles, symbol)
 
         # ── ChartIntelligence Analysis ──
-        smc: SMCAnalysis = self._ci.full_analysis(df, symbol=symbol)
+        smc: SMCAnalysis = self._ci.full_analysis(candles, symbol=symbol)
 
-        idx = len(df) - 1
-        current_price = float(df.iloc[idx]["close"])
+        idx = len(candles) - 1
+        current_price = float(candles.iloc[idx]["close"])
 
         # ── HTF Trend Detection ──
         d1_trend = kwargs.get("d1_trend", "UNKNOWN")
         if d1_trend == "UNKNOWN":
-            ema200 = df["close"].ewm(span=200).mean()
+            ema200 = candles["close"].ewm(span=200).mean()
             d1_trend = "UP" if current_price > ema200.iloc[idx] else "DOWN"
 
         # ── Divine Score Calculation ──
@@ -130,10 +136,11 @@ class OmniscientOracleStrategy(BaseStrategy):
         )
 
         if not flow_ok:
-            return StrategyDecision(
-                signal="NO_TRADE",
+            return Decision(
+                symbol=symbol,
+                action=Action.HOLD,
                 reason=f"Flow misaligned with HTF trend ({d1_trend})",
-                insights={
+                extra={
                     "regime": smc.regime,
                     "bias": d1_trend,
                     "flow": round(smc.delta_flow, 1),
@@ -144,44 +151,44 @@ class OmniscientOracleStrategy(BaseStrategy):
         divine_score, reasons = smc.divine_score(bias)
 
         # Check sweep confirmation (stricter: close must break prev candle)
-        prev = df.iloc[idx - 1]
+        prev = candles.iloc[idx - 1]
         if bias == "UP" and smc.bull_sweep:
-            if df.iloc[idx]["close"] <= prev["high"]:
+            if candles.iloc[idx]["close"] <= prev["high"]:
                 divine_score -= 20  # Penalize weak sweep
         elif bias == "DOWN" and smc.bear_sweep:
-            if df.iloc[idx]["close"] >= prev["low"]:
+            if candles.iloc[idx]["close"] >= prev["low"]:
                 divine_score -= 20
 
         # ── Signal Decision ──
-        signal = "NO_TRADE"
+        signal = Action.HOLD
         confidence = 0.0
 
         if divine_score >= divine_threshold:
-            signal = "BUY" if bias == "UP" else "SELL"
+            signal = Action.BUY if bias == "UP" else Action.SELL
             confidence = min(divine_score / 100.0, 1.0)
 
-        if signal != "NO_TRADE":
+        if signal != Action.HOLD:
             # SL/TP Calculation
             sl_mult = self.params.get("atr_sl_mult", 0.3)
             rr_target = self.params.get("rr_target", 5.0)
             atr = smc.atr_value if smc.atr_value > 0 else current_price * 0.001
 
-            if signal == "BUY":
-                sl = min(smc.internal_low, df.iloc[-5:]["low"].min()) - (atr * sl_mult)
+            if signal == Action.BUY:
+                sl = min(smc.internal_low, candles.iloc[-5:]["low"].min()) - (atr * sl_mult)
                 tp = current_price + (abs(current_price - sl) * rr_target)
             else:
-                sl = max(smc.internal_high, df.iloc[-5:]["high"].max()) + (atr * sl_mult)
+                sl = max(smc.internal_high, candles.iloc[-5:]["high"].max()) + (atr * sl_mult)
                 tp = current_price - (abs(current_price - sl) * rr_target)
 
-            return StrategyDecision(
-                signal=signal,
-                entry_price=current_price,
-                sl=sl,
-                tp=tp,
-                reason=" | ".join(reasons),
+            return Decision(
+                symbol=symbol,
+                action=signal,
                 confidence=confidence,
+                reason=" | ".join(reasons),
+                stop_loss=sl,
+                take_profit=tp,
                 risk_pct=get_risk_pct(symbol),
-                insights={
+                extra={
                     "regime": smc.regime,
                     "divine_score": divine_score,
                     "liquidity": "Swept" if (smc.bull_sweep or smc.bear_sweep) else "Building",
@@ -190,23 +197,24 @@ class OmniscientOracleStrategy(BaseStrategy):
                 },
             )
 
-        # NO_TRADE — waiting for setup
-        return StrategyDecision(
-            signal="NO_TRADE",
+        # Action.HOLD — waiting for setup
+        return Decision(
+            symbol=symbol,
+            action=Action.HOLD,
             reason="Waiting for Institutional Inefficiency",
-            insights={
+            extra={
                 "regime": smc.regime,
                 "divine_score": divine_score,
                 "liquidity": "Swept" if (smc.bull_sweep or smc.bear_sweep) else "Building",
                 "bias": d1_trend,
-            },
-            suggested_pending={
-                "int_buy": smc.internal_low,
-                "int_sell": smc.internal_high,
-                "ext_buy": smc.external_low,
-                "ext_sell": smc.external_high,
-                "sl_dist_atr": sl_mult if 'sl_mult' in dir() else 0.3,
-                "tp_rr": rr_target if 'rr_target' in dir() else 5.0,
+                "suggested_pending": {
+                    "int_buy": smc.internal_low,
+                    "int_sell": smc.internal_high,
+                    "ext_buy": smc.external_low,
+                    "ext_sell": smc.external_high,
+                    "sl_dist_atr": sl_mult if 'sl_mult' in locals() else 0.3, # changed dir() to locals() or just 0.3
+                    "tp_rr": rr_target if 'rr_target' in locals() else 5.0,
+                }
             },
         )
 

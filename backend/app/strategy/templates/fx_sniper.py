@@ -18,6 +18,7 @@ Timeframe:
 """
 
 import pandas as pd
+import pandas_ta as ta
 import app.analysis.indicators as ind
 from typing import Optional
 

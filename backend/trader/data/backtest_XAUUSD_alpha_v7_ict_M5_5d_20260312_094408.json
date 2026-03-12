@@ -1,0 +1,12 @@
+{
+  "total_trades": 1,
+  "wins": 1,
+  "losses": 0,
+  "win_rate": 100.0,
+  "profit_factor": 23365000000.0,
+  "max_dd": 0.0,
+  "net_pnl": 23.365,
+  "final_equity": 143.365,
+  "requested_initial_equity": 100.0,
+  "effective_initial_equity": 120.0
+}

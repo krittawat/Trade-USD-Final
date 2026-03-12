@@ -213,10 +213,11 @@ class JTGZoneFVGStrategy(BaseStrategy):
             )
 
         # ─── Chop regime block ───
-        if regime in (RegimeType.RANGING, RegimeType.LOW_VOLATILITY):
+        regime_val = getattr(regime, "value", str(regime))
+        if regime_val in ("RANGING", "LOW_VOLATILITY"):
             return self.create_hold(
                 symbol=symbol,
-                reason=f"Regime {regime.value} — JTG needs trending market",
+                reason=f"Regime {regime_val} — JTG needs trending market",
             )
 
         # ─── EVO V2: Session filter (GA-evolved window) ───
@@ -580,7 +581,7 @@ class JTGZoneFVGStrategy(BaseStrategy):
                 "pattern_bear": found_bear_pattern,
                 "at_support": at_support,
                 "at_resistance": at_resistance,
-                "regime": regime.value if hasattr(regime, "value") else str(regime),
+                "regime": getattr(regime, "value", str(regime)),
                 "stage": "signal",
                 "result": "ok",
             },
@@ -613,7 +614,7 @@ class JTGZoneFVGStrategy(BaseStrategy):
                 "htf_trend": "bull" if htf_bullish else "bear",
                 "fvg_bull": fvg_results.get("bull_fvg"),
                 "fvg_bear": fvg_results.get("bear_fvg"),
-                "regime": regime.value if hasattr(regime, "value") else str(regime),
+                "regime": getattr(regime, "value", str(regime)),
             },
         )
 

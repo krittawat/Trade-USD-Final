@@ -171,11 +171,22 @@ _DEFAULT_CFG = {
     },
     "symbol_timeframe_presets": {
         "XAUUSD": {
-            "M5": {"range_lookback": 28, "min_displacement_atr": 0.54, "fvg_min_size_atr": 0.08, "max_reentry_distance_atr": 0.38},
+            "M5": {
+                "range_lookback": 28,
+                "min_displacement_atr": 0.38,
+                "fvg_min_size_atr": 0.04,
+                "fvg_lookback": 4,
+                "displacement_body_ratio": 0.40,
+                "max_reentry_distance_atr": 0.80,
+                "premium_discount_buffer": 0.02,
+                "min_rr": 1.60,
+                "tp_rr": 2.00,
+                "require_prime_window": False,
+            },
             "M15": {"range_lookback": 36, "min_displacement_atr": 0.50, "fvg_min_size_atr": 0.09},
         },
         "BTCUSD": {
-            "M5": {"min_adx": 19.0, "min_displacement_atr": 0.74, "fvg_min_size_atr": 0.14, "max_reentry_distance_atr": 0.70},
+            "M5": {"min_adx": 19.0, "min_displacement_atr": 0.74, "fvg_min_size_atr": 0.10, "fvg_lookback": 4, "displacement_body_ratio": 0.40, "min_rr": 2.0},
             "M15": {"min_adx": 19.0, "min_displacement_atr": 0.72, "fvg_min_size_atr": 0.15, "tp_rr": 2.9},
         },
         "EURUSD": {

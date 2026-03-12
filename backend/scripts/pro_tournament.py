@@ -8,7 +8,7 @@ Pro Tournament Backtest — Multi-Symbol Strategy Tournament.
     - สร้าง JSON report + พิมพ์ rich table
 
 Usage:
-    cd d:\VibeCode\Trade\backend
+    cd c:/VibeCode/Trade/backend
     python scripts/pro_tournament.py
 
     # เลือก symbol:
@@ -55,7 +55,7 @@ logger = get_logger("ProTournament")
 # ═════════════════════════════════════════════
 
 SYMBOL_CONFIGS = {
-    "XAUUSDc": {
+    "XAUUSDm": {
         "contract_size": 100.0,
         "point": 0.01,
         "digits": 2,
@@ -63,7 +63,7 @@ SYMBOL_CONFIGS = {
         "ghost_protocol": True,
         "volume_min": 0.01,
     },
-    "XAGUSDc": {
+    "XAGUSDm": {
         "contract_size": 5000.0,
         "point": 0.001,
         "digits": 3,
@@ -71,7 +71,7 @@ SYMBOL_CONFIGS = {
         "ghost_protocol": True,
         "volume_min": 0.01,
     },
-    "BTCUSDc": {
+    "BTCUSDm": {
         "contract_size": 1.0,
         "point": 0.01,
         "digits": 2,
@@ -79,7 +79,31 @@ SYMBOL_CONFIGS = {
         "ghost_protocol": False,
         "volume_min": 0.01,
     },
-    "EURUSDc": {
+    "USOILm": {
+        "contract_size": 1000.0,
+        "point": 0.001,
+        "digits": 3,
+        "asset_class": "oil",
+        "ghost_protocol": False,
+        "volume_min": 0.01,
+    },
+    "US30m": {
+        "contract_size": 1.0,
+        "point": 0.1,
+        "digits": 1,
+        "asset_class": "indices",
+        "ghost_protocol": False,
+        "volume_min": 0.1,
+    },
+    "USTECm": {
+        "contract_size": 1.0,
+        "point": 0.1,
+        "digits": 1,
+        "asset_class": "indices",
+        "ghost_protocol": False,
+        "volume_min": 0.1,
+    },
+    "EURUSDm": {
         "contract_size": 100000.0,
         "point": 0.00001,
         "digits": 5,
@@ -87,7 +111,7 @@ SYMBOL_CONFIGS = {
         "ghost_protocol": False,
         "volume_min": 0.01,
     },
-    "GBPUSDc": {
+    "GBPUSDm": {
         "contract_size": 100000.0,
         "point": 0.00001,
         "digits": 5,
@@ -95,7 +119,7 @@ SYMBOL_CONFIGS = {
         "ghost_protocol": False,
         "volume_min": 0.01,
     },
-    "USDJPYc": {
+    "USDJPYm": {
         "contract_size": 100000.0,
         "point": 0.001,
         "digits": 3,
@@ -603,9 +627,10 @@ def run_tournament(
 
         symbol_entries: list[TournamentEntry] = []
 
-        for reg_entry in strategies:
+        total_strat = len(strategies)
+        for i, reg_entry in enumerate(strategies, 1):
             strat_name = reg_entry["strategy_name"]
-            print(f"    ⚡ {strat_name}...", end=" ", flush=True)
+            print(f"    [{i}/{total_strat}] ⚡ {strat_name}...", end=" ", flush=True)
 
             # Load strategy
             strategy = load_strategy(reg_entry)
@@ -700,9 +725,10 @@ def run_tournament(
         # Print leaderboard
         _print_leaderboard(symbol, symbol_entries)
 
-    # ─── Save to SQLite ───
-    if all_entries:
-        save_to_sqlite(all_entries, db_path)
+        # ─── Save to SQLite (Incremental) ───
+        if symbol_entries:
+            save_to_sqlite(symbol_entries, db_path)
+            print(f"  💾 Results for {symbol} saved to SQLite")
 
     # ─── Print grand summary ───
     _print_grand_summary(all_results)

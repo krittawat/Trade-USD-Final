@@ -20,6 +20,7 @@ Tuned Parameters (Best Config — Backtest Proven):
 """
 
 import pandas as pd
+import pandas_ta as ta
 import app.analysis.indicators as ind
 import numpy as np
 from typing import Optional, Dict, Any

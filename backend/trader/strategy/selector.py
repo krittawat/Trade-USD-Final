@@ -43,6 +43,7 @@ from .indices_ultimate import signal_indices_ultimate
 from .indicator_confluence import signal_indicator_confluence
 from .tick_volume_gate import evaluate_tick_volume
 from .alpha_v7_ict_live import signal_alpha_v7_ict
+from .news_session_momentum import signal_news_session_momentum
 
 
 from backend.trader.features.pattern_recognition import analyze_patterns
@@ -89,7 +90,9 @@ ENABLE_CORRELATION_SNIPER = _STRATEGY_CFG.get("enable_correlation_sniper", True)
 ENABLE_AETHER_FLOW = _STRATEGY_CFG.get("enable_aether_flow", True)
 ENABLE_ALPHA_V7 = _STRATEGY_CFG.get("enable_alpha_v7", True)
 ENABLE_INDICATOR_CONFLUENCE = _STRATEGY_CFG.get("enable_indicator_confluence", True)
+ENABLE_NEWS_SESSION_MOMENTUM = _STRATEGY_CFG.get("enable_news_session_momentum", False)
 MOMENTUM_MODELS = {"MOMENTUM_RIDER", "MOMENTUM_SCALPER_V2", "USOIL_MOMENTUM"}
+NEWS_SESSION_MODEL = "NEWS_SESSION_MOMENTUM"
 
 
 _last_trade_bar = {}
@@ -415,6 +418,8 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
 
     if _is_model_enabled(evolved_ctx, "ALPHA_V7_ICT", ENABLE_ALPHA_V7):
         candidates.append(signal_alpha_v7_ict(df, evolved_ctx))
+    if _is_model_enabled(evolved_ctx, NEWS_SESSION_MODEL, ENABLE_NEWS_SESSION_MOMENTUM):
+        candidates.append(signal_news_session_momentum(df, evolved_ctx))
 
     if events:
         candidates.append(signal_liquidity_hunter(df, events, evolved_ctx))
@@ -423,6 +428,19 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
     
     candidates = _filter_candidate_models(candidates, evolved_ctx)
     valid_candidates = [s for s in candidates if s is not None]
+
+    news_ctx = evolved_ctx.get("news_context") or {}
+    if bool(news_ctx.get("general_block_active", False)):
+        news_candidates = [
+            sig for sig in valid_candidates
+            if str(sig.get("model", "")).upper() == NEWS_SESSION_MODEL
+        ]
+        if news_candidates:
+            logger.info(f"📰 [SELECTOR] {_sym_debug} news window active -> prioritizing {NEWS_SESSION_MODEL}")
+            valid_candidates = news_candidates
+        else:
+            logger.info(f"📰 [SELECTOR] {_sym_debug} news window active -> no qualified news-session setup")
+            return None
     
     # ─── 2. Filter by Historical Performance (Quality Guard) ─────
     # ใช้ข้อมูลจากการ Replay 180 วัน เพื่อกรองสัญญาณที่ไม่มีคุณภาพย้อนหลัง
@@ -508,6 +526,7 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
     pattern_state = analyze_patterns(df)
     
     scored_signals = []
+    selector_session = str(context.get("session") or context.get("current_session") or "").upper().strip()
     for sig in valid_candidates:
         ml_score = calculate_trade_probability(df, sig, pattern_state)
         raw_confidence = sig.get('confidence', 0.5)
@@ -560,6 +579,7 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
     # ─── PHASE 3.55: TICK VOLUME ENTRY GATE ───────────────────
     # Only keep entries when tick volume is large enough and aligned with pressure.
     tv_filtered = []
+    has_sweep = any(e['type'] == 'SWEEP' for e in (events or []))
     for sig in scored_signals:
         tv_gate = evaluate_tick_volume(df, sig, context=evolved_ctx)
         sig['tick_volume_gate'] = tv_gate.state
@@ -571,6 +591,21 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
             logger.info(
                 f"🚫 [TICK VOL] {sig.get('model')} blocked on {_sym_debug}: "
                 f"{tv_gate.reason}"
+            )
+            continue
+
+        # Alpha V7 works best as a sweep-retest model. If the external liquidity detector
+        # does not confirm a sweep, reject high-volume chase bars and keep only retrace-style entries.
+        if (
+            alpha_v7_focus_mode
+            and str(sig.get("model", "")).upper() == "ALPHA_V7_ICT"
+            and not has_sweep
+            and selector_session not in {"LONDON", "LONDON_KZ", "ASIA", "OFF_WINDOW"}
+            and str(tv_gate.state).upper() in {"LARGE_ALIGNMENT", "STRONG_ALIGNMENT", "EXTREME_ALIGNMENT"}
+        ):
+            logger.info(
+                f"🚫 [ALPHA_V7_ICT] {_sym_debug} blocked chase entry without external sweep "
+                f"({selector_session}, {tv_gate.state})"
             )
             continue
 
@@ -609,11 +644,23 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
 
     # ─── PHASE 4.1: SMC LIQUIDITY CONFLUENCE ────────────────────
     # High-Beta assets (BTC, XAU) REQUIRE a liquidity sweep for institutional entries.
-    has_sweep = any(e['type'] == 'SWEEP' for e in (events or []))
     is_high_beta = any(hb in _sym_debug.upper() for hb in ["BTC", "XAU", "GOLD"])
+    alpha_v7_retrace_states = {"LOW_VOLUME_PENALTY", "ALIGNED", "HIGH_VOLUME_NEUTRAL"}
     
     for sig in scored_signals:
         if is_high_beta and not has_sweep:
+            model_name = str(sig.get("model", "")).upper()
+            rationale_text = " ".join(str(r) for r in sig.get("rationale", [])).upper()
+            tv_state = str(sig.get("tick_volume_gate", "")).upper()
+            if (
+                alpha_v7_focus_mode
+                and model_name == "ALPHA_V7_ICT"
+                and "SWEEP" in rationale_text
+                and tv_state in alpha_v7_retrace_states
+                and selector_session in {"LONDON", "LONDON_KZ", "ASIA", "OFF_WINDOW"}
+            ):
+                sig['rationale'].append("🌊 Internal sweep accepted for ICT retrace")
+                continue
             # Penalize signals that don't have a recent sweep confluence
             sig['confidence'] *= 0.85 
             sig['rationale'].append("🚨 No Liquidity Sweep Confluence (-15%)")
@@ -642,9 +689,12 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
     if not rr_filtered:
         return None
 
-    rr_filtered = apply_professional_guard(rr_filtered, evolved_ctx)
-    if not rr_filtered:
-        return None
+    if alpha_v7_focus_mode and strategy_eval_mode:
+        logger.info(f"🧪 [SELECTOR] {_sym_debug} skipping professional_guard for ALPHA_V7_ICT eval mode")
+    else:
+        rr_filtered = apply_professional_guard(rr_filtered, evolved_ctx)
+        if not rr_filtered:
+            return None
 
     # ─── PHASE 4.3: CONFLUENCE-AWARE COMPOSITE SCORING ────────
     buy_count = sum(1 for s in rr_filtered if s.get("side") == "BUY")

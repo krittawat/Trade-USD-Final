@@ -34,6 +34,7 @@ from backend.trader.scripts.run_backtest import (
     BacktestEngine,
     CONFIG as TRADER_CONFIG,
     SYMBOL_SPECS,
+    load_backtest_news_events,
     load_mt5_data,
     load_strategy_params_arg,
     risk_engine,
@@ -543,6 +544,7 @@ def main() -> int:
             "rapid_pullback",
             "indicator_confluence",
             "alpha_v7_ict",
+            "news_session_momentum",
         ],
         default="all",
         help="Trader-engine selector profile to run across the matrix.",
@@ -551,6 +553,11 @@ def main() -> int:
         "--strategy-params-json",
         default="",
         help="JSON object or path to JSON file with brain_params overrides for the selected strategy.",
+    )
+    parser.add_argument(
+        "--news-events-json",
+        default="",
+        help="Optional historical news events JSON used by NEWS_SESSION_MOMENTUM in matrix runs.",
     )
     parser.add_argument("--lookback", type=int, default=100, help="Engine lookback bars")
     parser.add_argument("--hold-bars", type=int, default=50, help="Engine hold bars")
@@ -614,6 +621,12 @@ def main() -> int:
     except Exception as e:
         print(f"[ERR] invalid --strategy-params-json: {e}")
         return 2
+    try:
+        loaded_news_events = load_backtest_news_events(getattr(args, "news_events_json", ""))
+        if loaded_news_events:
+            print(f"[NEWS] Loaded {loaded_news_events} historical events for matrix run")
+    except Exception as e:
+        print(f"[WARN] failed to load news events: {e}")
     if args.strategy != "all" and args.engine != "trader":
         print(f"[INFO] strategy={args.strategy} is trader-selector specific -> forcing --engine trader")
         args.engine = "trader"

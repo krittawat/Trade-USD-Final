@@ -114,12 +114,12 @@ def run_matrix_bt(symbol: str, timeframe: int, days: int, param_grid: dict):
     return sorted(results, key=lambda x: x['score'], reverse=True)
 
 def main():
-    # Streamlined Institutional Grid (Focus on most impactful parameters)
+    # Streamlined Institutional Grid (Expanded for high-probability ICT zones)
     param_grid = {
-        "min_rr": [2.0, 3.0],
-        "fvg_min_size_atr": [0.4, 0.7],
-        "fvg_lookback": [4, 7],
-        "displacement_body_ratio": [0.5, 0.6],
+        "min_rr": [2.0, 3.5],
+        "fvg_min_size_atr": [0.1, 0.25],
+        "fvg_lookback": [4, 8],
+        "displacement_body_ratio": [0.4, 0.55],
         "pivot_length": [4]
     } # 2 * 2 * 2 * 2 * 1 = 16 combinations per symbol (32 total) -> (~5-10 mins)
 

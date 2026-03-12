@@ -2,13 +2,13 @@
     "risk_limits": {
         "max_risk_per_trade_percent": 0.5,
         "max_daily_loss_percent": 30.0,
-        "max_daily_loss_currency": 50.0,
+        "max_daily_loss_currency": 100.0,
         "hard_risk_per_trade_pct": 0.3,
         "hard_max_open_risk_pct": 12.0,
         "hard_margin_util_after_pct": 25.0,
         "hard_min_free_margin_pct": 70.0,
         "max_consecutive_losses": 3,
-        "daily_target_currency": 55.0,
+        "daily_target_currency": 60.0,
         "vault_target_currency": 17.5,
         "usd_to_thb_rate": 35.0,
         "max_spread_points": {
@@ -51,7 +51,7 @@
         "max_positions_per_symbol": {
             "BTCUSD": 3,
             "USOIL": 3,
-            "XAUUSD": 1,
+            "XAUUSD": 2,
             "XAGUSD": 1,
             "US30": 3,
             "USTEC": 3
@@ -99,20 +99,22 @@
             "BTCUSD"
         ],
         "live_shadow_symbols_override": [],
-        "live_strategy_profile": "alpha_v7_ict",
+        "live_strategy_profile": "hybrid_institutional",
         "live_strategy_whitelist": [
-            "ALPHA_V7_ICT"
+            "ALPHA_V7_ICT",
+            "ALPHA_V6_SMC",
+            "GOLD_ELITE",
+            "BTC_ELITE_V2"
         ],
         "live_force_models": [
-            "ALPHA_V7_ICT"
+            "ALPHA_V7_ICT",
+            "ALPHA_V6_SMC",
+            "GOLD_ELITE",
+            "BTC_ELITE_V2"
         ],
         "live_strategy_eval_mode": true,
         "live_strategy_min_confidence": 0.72,
         "live_pinned_symbol_timeframes": {
-            "XAUUSD": [
-                "M5",
-                "M15"
-            ],
             "BTCUSD": [
                 "M5",
                 "M15"
@@ -183,6 +185,7 @@
         "enable_aether_flow": true,
         "enable_indicator_confluence": false,
         "enable_indices_ultimate": true,
+        "enable_news_session_momentum": false,
         "min_confidence_trade": 0.75,
         "min_liquidity_event_score": 0.80,
         "tick_volume_gate": {
@@ -205,7 +208,8 @@
             "block_neutral_large_volume": true,
             "allow_low_volume_models": [
                 "COUNTER_TREND",
-                "BTC_MEAN_REV"
+                "BTC_MEAN_REV",
+                "ALPHA_V7_ICT"
             ],
             "strict_entry_models": [],
             "symbol_overrides": {
@@ -603,6 +607,106 @@
                         "tp2_rr": 2.35
                     }
                 }
+            }
+        },
+        "news_session_momentum": {
+            "enabled_symbols": [
+                "XAUUSD",
+                "EURUSD",
+                "GBPUSD",
+                "USDJPY"
+            ],
+            "allowed_timeframes": [
+                "M1",
+                "M3",
+                "M5"
+            ],
+            "news": {
+                "impact_levels": [
+                    "HIGH"
+                ],
+                "general_block_minutes_before": 30,
+                "general_block_minutes_after": 30,
+                "trade_minutes_before": 0,
+                "trade_minutes_after": 20,
+                "pre_news_range_minutes": 30,
+                "min_pre_news_bars": 4
+            },
+            "volume": {
+                "spike_ma_period": 12,
+                "spike_threshold": 1.6,
+                "directional_pressure_min": 0.58,
+                "retest_volume_ratio_min": 0.95
+            },
+            "price_action": {
+                "breakout_body_ratio_min": 0.45,
+                "breakout_close_buffer_atr": 0.08,
+                "max_breakout_wick_ratio": 0.35,
+                "max_breakout_distance_atr": 0.7,
+                "require_retest": false,
+                "retest_tolerance_atr": 0.18,
+                "retest_max_bars": 2
+            },
+            "risk": {
+                "risk_pct": 0.25,
+                "atr_stop_multiplier": 1.25,
+                "stop_buffer_atr": 0.2,
+                "min_stop_atr": 0.9,
+                "max_stop_atr": 2.2,
+                "tp1_rr": 1.6,
+                "tp2_rr": 2.2,
+                "tp3_rr": 3.0
+            },
+            "execution": {
+                "entry_type": "MARKET",
+                "max_spread_points": 160.0,
+                "max_slippage_points": 140.0
+            },
+            "symbol_overrides": {
+                "XAUUSD": {
+                    "news": {
+                        "pre_news_range_minutes": 45,
+                        "trade_minutes_after": 25
+                    },
+                    "volume": {
+                        "spike_threshold": 1.7
+                    },
+                    "risk": {
+                        "atr_stop_multiplier": 1.35,
+                        "max_stop_atr": 2.4
+                    },
+                    "execution": {
+                        "max_spread_points": 180.0,
+                        "max_slippage_points": 140.0
+                    }
+                },
+                "EURUSD": {
+                    "execution": {
+                        "max_spread_points": 28.0,
+                        "max_slippage_points": 22.0
+                    }
+                },
+                "GBPUSD": {
+                    "volume": {
+                        "spike_threshold": 1.55
+                    },
+                    "execution": {
+                        "max_spread_points": 34.0,
+                        "max_slippage_points": 26.0
+                    }
+                },
+                "USDJPY": {
+                    "news": {
+                        "trade_minutes_after": 15
+                    },
+                    "execution": {
+                        "max_spread_points": 28.0,
+                        "max_slippage_points": 24.0
+                    }
+                }
+            },
+            "backtest": {
+                "news_events_json": "backend/trader/config/news_session_events.example.json"
             }
         },
         "professional_guard": {

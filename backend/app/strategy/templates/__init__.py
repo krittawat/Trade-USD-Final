@@ -268,4 +268,11 @@ _SEED_REGISTRY = [
      "asset_class": "*",
      "suitable_regimes": ["trending_up", "trending_down", "high_volatility", "breakout", "liquidity_sweep", "accumulation"],
      "priority": 140},
+
+    # ── Oscillator Power Strategy (M15, RSI + MACD + FVG) ──
+    {"strategy_name": "oscillator_power", "class_name": "OscillatorPowerStrategy",
+     "module_path": "app.strategy.templates.oscillator_power", "timeframe": "M15",
+     "asset_class": "*",
+     "suitable_regimes": ["trending_up", "trending_down", "high_volatility", "ranging"],
+     "priority": 120},
 ]

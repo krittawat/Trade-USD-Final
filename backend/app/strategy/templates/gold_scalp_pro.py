@@ -17,6 +17,7 @@ import app.analysis.indicators as ind
 import logging
 from typing import Optional, Dict, Any
 from .base_strategy import BaseStrategy, StrategyDecision
+import pandas_ta as ta
 import MetaTrader5 as mt5
 from app.risk.anti_hunt_sl import apply_anti_hunt_sl
 
@@ -103,17 +104,26 @@ class GoldScalpProStrategy(BaseStrategy):
             "features": ["Chandelier Exit", "Multi-Tier Profit Lock", "Vitality Boost"]
         }
     
-    def analyze(self, df: pd.DataFrame, symbol: str = "XAUUSD", **kwargs) -> StrategyDecision:
+    def analyze(self, candles: pd.DataFrame, profile=None, regime=None, **kwargs) -> StrategyDecision:
         """
         Analyze market using VWAP + SuperTrend + Haikin Ashi Logic
         """
-        if df is None or len(df) < 100:
+        if candles is None or len(candles) < 100:
             return StrategyDecision(signal="NO_TRADE", reason="Insufficient data")
+
+        symbol = "XAUUSD"
+        if hasattr(profile, 'symbol'):
+            symbol = profile.symbol
+        elif isinstance(profile, str):
+            symbol = profile
+            
+        if regime is not None and 'regime_context' not in kwargs:
+            kwargs['regime_context'] = regime
 
         # --- Unified Brain Check (Phase A) ---
         regime_context = kwargs.get("regime_context")
-        if regime_context and not regime_context.actionable:
-            return StrategyDecision(signal="NO_TRADE", reason=f"Brain Block: {regime_context.reason}")
+        if regime_context and hasattr(regime_context, 'actionable') and not regime_context.actionable:
+            return StrategyDecision(signal="NO_TRADE", reason=f"Brain Block: {getattr(regime_context, 'reason', '')}")
         
         # Risk Parameters
         self.risk_per_trade = 0.02  # 2% equity risk
@@ -130,7 +140,7 @@ class GoldScalpProStrategy(BaseStrategy):
         self.use_vwap = True
         
         # Ensure Indicators
-        df = self._ensure_indicators(df)
+        df = self._ensure_indicators(candles)
         
         # Get Current Candle
         r = df.iloc[-1]
@@ -174,7 +184,7 @@ class GoldScalpProStrategy(BaseStrategy):
         
         # Override with Unified Brain Context if available
         if regime_context:
-            regime = regime_context.regime.value
+            regime = getattr(regime_context.regime, "value", str(regime_context.regime))
             
             # 1. BLOCK HIGH VOLATILITY (Phase F Optimization)
             if regime == "HIGH_VOLATILITY":

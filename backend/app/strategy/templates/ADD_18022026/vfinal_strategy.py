@@ -1,9 +1,10 @@
-﻿"""
+"""
 V-FINAL Strategy - Maximum Profit
 Combining V8 Regime + V9 Smart Money Concepts
 Backtest: 97.7% WR, $700+ profit
 """
 import pandas as pd
+import pandas_ta as ta
 import app.analysis.indicators as ind
 import numpy as np
 from app.strategy.templates.base_strategy import StrategyDecision, SignalType, BaseStrategy
@@ -266,22 +267,6 @@ class VFinalStrategy(BaseStrategy):
     def __init__(self):
         self.name = self.__class__.name
         self.params = {}
-
-    def update_parameters(self, params: dict):
-        self.params.update(params)
-        
-    def analyze(self, df: pd.DataFrame, profile=None, regime=None, **kwargs) -> StrategyDecision:
-        # Accept pipeline-style positional args: analyze(candles, profile, regime)
-        # while preserving template-style keyword usage.
-        run_params = self.params.copy()
-        if profile is not None and "symbol" not in run_params:
-            symbol = getattr(profile, "symbol", None)
-            if symbol:
-                run_params["symbol"] = symbol
-        if regime is not None and "regime" not in run_params:
-            run_params["regime"] = regime
-        run_params.update(kwargs)
-        return vfinal_strategy(df, **run_params)
         
     def get_status(self):
         return {"name": self.name, "win_rate": "97.7%", "params": self.params}

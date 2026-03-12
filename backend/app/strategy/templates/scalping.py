@@ -26,6 +26,7 @@ Changes V2 (11-Feb-2026):
 """
 
 import pandas as pd
+import pandas_ta as ta
 import app.analysis.indicators as ind
 import numpy as np
 

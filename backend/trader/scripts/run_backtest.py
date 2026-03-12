@@ -36,6 +36,7 @@ from backend.trader.risk.gate import RiskEngine
 from backend.trader.storage.sqlite_db import DataStore
 from backend.trader.main import compute_lot_size
 from backend.trader.risk.sizing import sizer
+from backend.trader.services.news_filter import news_filter
 
 # --- Config ---
 settings_path = ROOT / "backend" / "trader" / "config" / "settings.json"
@@ -116,8 +117,14 @@ STRATEGY_PRESETS = {
     "alpha_v7_ict": {
         "whitelist": ["ALPHA_V7_ICT"],
         "force_enabled_models": ["ALPHA_V7_ICT"],
-        "min_confidence": 0.70,
+        "min_confidence": 0.74,
         "profile": "alpha_v7_ict",
+    },
+    "news_session_momentum": {
+        "whitelist": ["NEWS_SESSION_MOMENTUM"],
+        "force_enabled_models": ["NEWS_SESSION_MOMENTUM"],
+        "min_confidence": 0.68,
+        "profile": "news_session_momentum",
     },
     "momentum_rider": {
         "whitelist": ["MOMENTUM_RIDER"],
@@ -249,6 +256,13 @@ def _resolve_symbol_specs(symbol: str) -> dict:
     specs.setdefault("volume_step", 0.01)
     return specs
 
+
+def load_backtest_news_events(raw_path: str | None = None) -> int:
+    configured = str(raw_path or "").strip()
+    if configured:
+        return news_filter.load_events_from_json(configured)
+    return news_filter.load_configured_backtest_events()
+
 # --- Backtest Core ---
 class BacktestEngine:
     def __init__(
@@ -261,11 +275,12 @@ class BacktestEngine:
     ):
         self.symbol = symbol
         self.standard_symbol = _normalize_symbol_key(symbol)
-        self.initial_equity = initial_equity
+        self.requested_initial_equity = float(initial_equity)
+        self.initial_equity = self._resolve_initial_equity(self.requested_initial_equity)
         self.timeframe = str(timeframe or "M5").upper()
         self.strategy_mode = str(strategy_mode or "all").lower()
-        self.equity = initial_equity
-        self.peak_equity = initial_equity
+        self.equity = self.initial_equity
+        self.peak_equity = self.initial_equity
         self.trades = []
         self.daily_pnl = 0.0
         self.consecutive_losses = 0
@@ -278,6 +293,28 @@ class BacktestEngine:
         self.specs = _resolve_symbol_specs(symbol)
         self.brain_params = dict(brain_params or {})
 
+    def _resolve_initial_equity(self, requested_equity: float) -> float:
+        requested = float(requested_equity or 0.0)
+        symbol_floor = 0.0
+        try:
+            symbol_floor = float(risk_engine._get_symbol_min_equity(self.symbol) or 0.0)
+        except Exception:
+            symbol_floor = 0.0
+        if symbol_floor > requested:
+            print(
+                f"  [RISK] Raising initial equity from ${requested:.2f} to "
+                f"${symbol_floor:.2f} for {self.standard_symbol} minimum."
+            )
+            return symbol_floor
+        return requested
+
+    def _resolve_effective_lookback(self, requested_lookback: int) -> int:
+        effective = max(int(requested_lookback or 0), 100)
+        if self.strategy_mode == "alpha_v7_ict":
+            # Alpha V7 needs EMA200 plus extra bars for session/range context.
+            effective = max(effective, 260)
+        return effective
+
     def _calculate_lot(self, signal: dict) -> float:
         # Dynamic lot sizing matching main.py logic
         sl_dist = abs(signal["entry_price"] - signal["sl"])
@@ -289,6 +326,11 @@ class BacktestEngine:
         
         # Get Alpha-Specific Dynamic Risk % (including FOMO penalty)
         dynamic_risk_pct = sizer.get_dynamic_risk(strategy_name, self.symbol, regime, fomo_penalty=fomo_mult)
+        raw_risk_profile = signal.get("risk_profile", {})
+        if isinstance(raw_risk_profile, dict):
+            override_risk_pct = float(raw_risk_profile.get("risk_pct", 0.0) or 0.0)
+            if override_risk_pct > 0:
+                dynamic_risk_pct = min(dynamic_risk_pct, override_risk_pct)
         
         # Simulating Governor Multiplier (1.0 for normal backtest)
         effective_risk = dynamic_risk_pct * self.lot_multiplier
@@ -354,11 +396,17 @@ class BacktestEngine:
         return {"result": "TIMEOUT", "pnl": pnl, "exit_price": last_close}
 
     def run(self, df: pd.DataFrame, lookback: int = 100, hold_bars: int = 50):
+        effective_lookback = self._resolve_effective_lookback(lookback)
         print(f"\n{'='*60}")
         print(f"  OPUS Backtest V2 - {self.symbol}")
-        print(f"  Bars: {len(df)} | Lookback: {lookback} | Hold: {hold_bars}")
+        print(f"  Bars: {len(df)} | Lookback: {effective_lookback} | Hold: {hold_bars}")
         print(f"  Timeframe: {self.timeframe} | Strategy: {self.strategy_mode}")
         print(f"  Initial Equity: ${self.initial_equity:.2f}")
+        if self.initial_equity > self.requested_initial_equity:
+            print(
+                f"  Requested Equity: ${self.requested_initial_equity:.2f} "
+                f"(raised to symbol floor)"
+            )
         print(f"  Spread sim: {self.specs['spread_points']} points")
         print(f"{'='*60}\n")
 
@@ -382,8 +430,8 @@ class BacktestEngine:
         strategy_eval_min_confidence = float(self.strategy_controls.get("min_confidence", 0.62) or 0.62)
         strategy_profile = str(self.strategy_controls.get("profile", self.strategy_mode))
 
-        for i in range(lookback, len(df) - hold_bars):
-            window = df.iloc[i - lookback: i]
+        for i in range(effective_lookback, len(df) - hold_bars):
+            window = df.iloc[i - effective_lookback: i]
             regime_res = classify_regime(window, regime_cfg)
             events = detect_liquidity_events(window, liq_cfg)
             row_now = df.iloc[i]
@@ -406,6 +454,14 @@ class BacktestEngine:
                 "current_time": row_now.get("time"),
                 "strategy_profile": strategy_profile,
             }
+            news_ctx = news_filter.get_event_context(self.symbol, now=pd.Timestamp(row_now.get("time")).to_pydatetime())
+            context["news_context"] = news_ctx
+            context["market_state"] = {
+                "spread": self.specs["spread_points"],
+                "is_news": bool(news_ctx.get("general_block_active", False)),
+                "news_trade_window": bool(news_ctx.get("trade_window_active", False)),
+                "backtest_mode": True,
+            }
             if strategy_whitelist:
                 context["strategy_whitelist"] = strategy_whitelist
                 context["strategy_eval_mode"] = True
@@ -420,7 +476,7 @@ class BacktestEngine:
                 continue
             total_signals += 1
 
-            if i > lookback:
+            if i > effective_lookback:
                 current_time = df.iloc[i].get("time", None)
                 prev_time = df.iloc[i - 1].get("time", None)
                 if current_time is not None and prev_time is not None:
@@ -450,7 +506,8 @@ class BacktestEngine:
             }
             market_state = {
                 "spread": self.specs["spread_points"],
-                "is_news": False,
+                "is_news": bool(news_ctx.get("general_block_active", False)),
+                "news_trade_window": bool(news_ctx.get("trade_window_active", False)),
                 "vol_ratio": float(window.iloc[-1].get("vol_ratio", 1.0) or 1.0),
                 "backtest_mode": True,
             }
@@ -507,7 +564,9 @@ class BacktestEngine:
         if not self.trades:
             return {"win_rate": 0, "profit_factor": 0, "max_dd": 0,
                     "total_trades": 0, "wins": 0, "losses": 0,
-                    "net_pnl": 0, "final_equity": self.equity}
+                    "net_pnl": 0, "final_equity": self.equity,
+                    "requested_initial_equity": round(self.requested_initial_equity, 4),
+                    "effective_initial_equity": round(self.initial_equity, 4)}
         wins = [t for t in self.trades if t["pnl_usd"] > 0]
         losses = [t for t in self.trades if t["pnl_usd"] <= 0]
         gross_profit = sum(t["pnl_usd"] for t in wins) if wins else 0
@@ -519,6 +578,8 @@ class BacktestEngine:
             "max_dd": round(self.max_dd, 2),
             "net_pnl": round(sum(t["pnl_usd"] for t in self.trades), 4),
             "final_equity": round(self.equity, 4),
+            "requested_initial_equity": round(self.requested_initial_equity, 4),
+            "effective_initial_equity": round(self.initial_equity, 4),
         }
 
     def _print_results(self, total_signals, blocked_signals):
@@ -609,11 +670,17 @@ def main():
             "rapid_pullback",
             "indicator_confluence",
             "alpha_v7_ict",
+            "news_session_momentum",
         ],
         help="Backtest all selector models or force a single model.",
     )
     parser.add_argument("--days", type=int, default=0, help="If >0, fetch by days instead of bars")
     parser.add_argument("--equity", type=float, default=100.0)
+    parser.add_argument(
+        "--news-events-json",
+        default="",
+        help="Optional path to historical news events JSON for NEWS_SESSION_MOMENTUM backtests.",
+    )
     parser.add_argument(
         "--strategy-params-json",
         default="",
@@ -626,6 +693,12 @@ def main():
     except Exception as e:
         print(f"[ERR] invalid --strategy-params-json: {e}")
         return 2
+    try:
+        loaded_news_events = load_backtest_news_events(args.news_events_json)
+        if loaded_news_events:
+            print(f"  [NEWS] Loaded {loaded_news_events} historical events")
+    except Exception as e:
+        print(f"[WARN] failed to load news events: {e}")
     engine = BacktestEngine(
         symbol=args.symbol,
         initial_equity=args.equity,

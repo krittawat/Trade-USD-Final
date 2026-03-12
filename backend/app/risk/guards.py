@@ -32,17 +32,18 @@ def check_floating_dd(account: AccountState, symbol: str = "", max_dd_pct: float
     
     # --- SURVIVOR MODE BYPASS ---
     # หากเป็น XAU หรือ BTC อนุญาตให้เทรดเพื่อกู้พอร์ตแม้ DD จะสูง (แต่ต้องคุม Lot เล็ก)
-    if not safe and symbol.upper() in ["XAUUSD", "XAUUSDM", "BTCUSD", "BTCUSDM"]:
+    symbol_str = str(symbol).upper() if symbol else ""
+    if not safe and symbol_str in ["XAUUSD", "XAUUSDM", "BTCUSD", "BTCUSDM"]:
         logger.info("survivor_mode_bypass", extra={
             "symbol": symbol,
-            "dd_pct": round(dd_pct, 2),
+            "dd_pct": float(round(dd_pct, 2)),
             "action": "ALLOW_RECOVERY_TRADE"
         })
         return True
 
     if not safe:
         logger.warning("floating_dd_exceeded", extra={
-            "dd_pct": round(dd_pct, 2),
+            "dd_pct": float(round(dd_pct, 2)),
             "max_dd_pct": max_dd_pct,
             "equity": account.equity,
             "floating_pl": account.floating_pl,
@@ -50,13 +51,13 @@ def check_floating_dd(account: AccountState, symbol: str = "", max_dd_pct: float
     return safe
 
 
-def check_floating_dd_usd(account: AccountState, max_dd_usd: float = 1400.0) -> bool:
+def check_floating_dd_usd(account: AccountState, max_dd_usd: float = 14.0) -> bool:
     """
     ตรวจ floating drawdown เป็นยอดเงินบัญชี (Account Currency).
     
     Returns:
         True = ปลอดภัย (DD ≤ limit)
-        False = อันตราย (DD > limit) → ห้ามเปิดเทรดใหม่
+        False = อันตราย (DD > limit) → ห้ามเปิดเทรดใหม่ และควร Kill-Switch
     """
     if max_dd_usd <= 0:
         return True
@@ -64,9 +65,10 @@ def check_floating_dd_usd(account: AccountState, max_dd_usd: float = 1400.0) -> 
     # floating_pl is negative when in drawdown
     safe = account.floating_pl >= -max_dd_usd
     if not safe:
-        logger.warning("floating_dd_usd_exceeded", extra={
+        logger.critical("floating_dd_usd_KILLSWITCH_TRIGGERED", extra={
             "floating_pl": account.floating_pl,
             "max_dd_usd": max_dd_usd,
+            "action": "HALT_TRADING_24H"
         })
     return safe
 
@@ -118,7 +120,7 @@ def check_daily_loss(
     safe = daily_loss_pct <= max_daily_loss_pct
     if not safe:
         logger.warning("daily_loss_exceeded", extra={
-            "daily_loss_pct": round(daily_loss_pct, 2),
+            "daily_loss_pct": float(round(daily_loss_pct, 2)),
             "daily_pl": account.daily_pl,
             "max_pct": max_daily_loss_pct,
         })

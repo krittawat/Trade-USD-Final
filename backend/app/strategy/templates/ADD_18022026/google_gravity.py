@@ -29,7 +29,7 @@ from app.domain.enums import Action, RegimeType
 from app.strategy.base import BaseStrategy
 
 # ── กลยุทธ์ย่อย ──
-from app.strategy.templates.trend_pullback import TrendPullbackStrategy
+from app.strategy.templates.trend_rider import TrendRiderStrategy
 from app.strategy.templates.ranging_sniper import RangingSniperStrategy
 from app.strategy.templates.ghost_protocol import GhostProtocol
 from app.strategy.templates.ghost_oracle_tuning import get_tuning
@@ -53,7 +53,7 @@ class GoogleGravityStrategy(BaseStrategy):
 
     def __init__(self):
         super().__init__()
-        self.trend_strategy = TrendPullbackStrategy()
+        self.trend_strategy = TrendRiderStrategy()
         self.range_strategy = RangingSniperStrategy()
         self.ghost_strategy = GhostProtocol()
 

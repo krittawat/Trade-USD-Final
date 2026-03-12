@@ -34,6 +34,8 @@ Target: Win Rate >55%, Profit Factor >1.5
 
 import pandas as pd
 import numpy as np
+import pandas_ta as ta
+
 
 from app.strategy.base import BaseStrategy
 from app.core.logging import get_logger

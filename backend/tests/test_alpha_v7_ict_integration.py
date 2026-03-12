@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 from app.domain.enums import Action
 from app.domain.models import Decision, SymbolProfile
 from backend.trader.brain.quality_filter import quality_filter
-from backend.trader.scripts.run_backtest import STRATEGY_PRESETS
+from backend.trader.scripts.run_backtest import BacktestEngine, STRATEGY_PRESETS, risk_engine
 from backend.trader.strategy import alpha_v7_ict_live
 from backend.trader.strategy import selector
 
@@ -44,7 +44,7 @@ def test_alpha_v7_param_resolver_applies_symbol_and_timeframe_overrides():
         {"symbol": "BTCUSDm", "timeframe": "M5", "session": "LONDON"},
     )
 
-    assert params["min_rr"] >= 2.1
+    assert params["min_rr"] >= 2.0
     assert params["min_adx"] >= 19.0
     assert params["min_displacement_atr"] >= 0.70
     assert params["max_reentry_distance_atr"] >= 0.60
@@ -85,6 +85,28 @@ def test_alpha_v7_backtest_preset_registered():
     assert preset["whitelist"] == ["ALPHA_V7_ICT"]
     assert preset["force_enabled_models"] == ["ALPHA_V7_ICT"]
     assert preset["min_confidence"] >= 0.70
+
+
+def test_alpha_v7_backtest_engine_extends_lookback():
+    engine = BacktestEngine(symbol="BTCUSD", timeframe="M5", strategy_mode="alpha_v7_ict")
+    assert engine._resolve_effective_lookback(100) == 260
+    assert engine._resolve_effective_lookback(320) == 320
+
+
+def test_backtest_engine_aligns_initial_equity_to_symbol_floor():
+    requested_equity = 100.0
+    xau_floor = float(risk_engine._get_symbol_min_equity("XAUUSD") or 0.0)
+
+    engine = BacktestEngine(
+        symbol="XAUUSD",
+        initial_equity=requested_equity,
+        timeframe="M5",
+        strategy_mode="alpha_v7_ict",
+    )
+
+    assert engine.requested_initial_equity == requested_equity
+    assert engine.initial_equity == max(requested_equity, xau_floor)
+    assert engine.equity == engine.initial_equity
 
 
 def test_selector_bypasses_antichop_for_alpha_v7_focus(monkeypatch):

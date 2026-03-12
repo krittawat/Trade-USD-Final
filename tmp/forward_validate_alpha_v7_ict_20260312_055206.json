@@ -1,0 +1,101 @@
+{
+  "generated_at": "2026-03-12T05:52:06.806834+00:00",
+  "strategy": "alpha_v7_ict",
+  "symbols": [
+    "XAUUSD"
+  ],
+  "timeframes": [
+    "H1"
+  ],
+  "window_days": [
+    30,
+    90
+  ],
+  "train_days": 60,
+  "test_days": 30,
+  "end_offset_days": 0,
+  "requested_equity": 100.0,
+  "rows": [
+    {
+      "symbol": "XAUUSD",
+      "timeframe": "H1",
+      "windows": {
+        "30d": {
+          "start": "2026-02-10T05:00:00+00:00",
+          "end": "2026-03-12T05:00:00+00:00",
+          "bars": 506,
+          "score": -22.0,
+          "metrics": {
+            "win_rate": 0,
+            "profit_factor": 0,
+            "max_dd": 0,
+            "total_trades": 0,
+            "wins": 0,
+            "losses": 0,
+            "net_pnl": 0,
+            "final_equity": 120.0,
+            "requested_initial_equity": 100.0,
+            "effective_initial_equity": 120.0
+          }
+        },
+        "90d": {
+          "start": "2025-12-12T05:00:00+00:00",
+          "end": "2026-03-12T05:00:00+00:00",
+          "bars": 1421,
+          "score": -22.0,
+          "metrics": {
+            "win_rate": 0,
+            "profit_factor": 0,
+            "max_dd": 0,
+            "total_trades": 0,
+            "wins": 0,
+            "losses": 0,
+            "net_pnl": 0,
+            "final_equity": 120.0,
+            "requested_initial_equity": 100.0,
+            "effective_initial_equity": 120.0
+          }
+        }
+      },
+      "train_window": {
+        "start": "2025-12-12T05:00:00+00:00",
+        "end": "2026-02-10T05:00:00+00:00",
+        "bars": 915
+      },
+      "test_window": {
+        "start": "2026-02-10T05:00:00+00:00",
+        "end": "2026-03-12T05:00:00+00:00",
+        "bars": 506
+      },
+      "train": {
+        "win_rate": 0,
+        "profit_factor": 0,
+        "max_dd": 0,
+        "total_trades": 0,
+        "wins": 0,
+        "losses": 0,
+        "net_pnl": 0,
+        "final_equity": 120.0,
+        "requested_initial_equity": 100.0,
+        "effective_initial_equity": 120.0
+      },
+      "test": {
+        "win_rate": 0,
+        "profit_factor": 0,
+        "max_dd": 0,
+        "total_trades": 0,
+        "wins": 0,
+        "losses": 0,
+        "net_pnl": 0,
+        "final_equity": 120.0,
+        "requested_initial_equity": 100.0,
+        "effective_initial_equity": 120.0
+      },
+      "train_score": -26.0,
+      "test_score": -22.0,
+      "decay": "STABLE",
+      "edge_persisted": false,
+      "window_persisted": false
+    }
+  ]
+}

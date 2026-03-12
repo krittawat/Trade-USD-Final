@@ -13,7 +13,7 @@ Risk Sizing — คำนวณ lot size จากความเสี่ยง
     - ปัดเศษลง (floor) เสมอ — ไม่ปัดขึ้น
 """
 
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, cast
 
 from app.core.config import Settings
 from app.core.logging import get_logger
@@ -22,6 +22,7 @@ from app.domain.models import AccountState, Decision, OrderPlan, SymbolProfile
 from app.mt5.broker_specs import round_lot, is_lot_valid
 from app.core.currency_adapter import get_adapter
 from app.services.session import get_current_session
+from trader.config.paths import SETTINGS_PATH
 
 if TYPE_CHECKING:
     from app.brain.personality import PersonalityProfile
@@ -41,7 +42,6 @@ HARD_MAX_LOT_BROKER = {       # Absolute max broker lots per symbol (final safet
 HARD_MAX_LOT_DEFAULT = 0.02    # Fallback for unlisted symbols
 
 import json
-from backend.trader.config.paths import SETTINGS_PATH
 try:
     with open(SETTINGS_PATH, "r", encoding="utf-8") as _f:
         _TIER_CFG = json.load(_f).get("tiered_scaling", {})
@@ -87,7 +87,7 @@ def get_dynamic_atr_multiplier(current_atr: float, baseline_atr: float, base_mul
     # Widen SL slightly if highly volatile (up to 30% wider), tighten if dead (down to 20% tighter)
     adaptive_ratio = max(0.8, min(1.3, volatility_ratio))
     
-    return round(base_multiplier * adaptive_ratio, 2)
+    return float(round(base_multiplier * adaptive_ratio, 2))
 
 
 def calculate_lot_size(
@@ -304,8 +304,8 @@ def calculate_lot_size(
                 kelly_multiplier = half_kelly / base_pct_decimal
                 
                 # Cap multiplier to prevent extreme explosive sizing [0.5x to 1.5x]
-                kelly_modifier = max(0.5, min(1.5, kelly_multiplier))
-                risk_modifier *= kelly_modifier
+                kelly_multiplier = max(0.5, min(1.5, kelly_multiplier))
+                risk_modifier *= kelly_multiplier
                 risk_reason.append(f"Half-Kelly ({half_kelly*100:.1f}%)")
             else:
                 # Negative Kelly indicates statistical disadvantage - slash risk severely
@@ -363,9 +363,9 @@ def calculate_lot_size(
     if risk_reason:
         logger.info("risk_dynamic_adjusted", extra={
             "symbol": decision.symbol,
-            "base_pct": base_risk_pct,
-            "final_pct": round(final_risk_pct, 2),
-            "modifier": round(risk_modifier, 2),
+            "base_pct": float(base_risk_pct),
+            "final_pct": float(round(final_risk_pct, 2)),
+            "modifier": float(round(risk_modifier, 2)),
             "reasons": risk_reason
         })
     
@@ -515,9 +515,9 @@ def calculate_lot_size(
     dynamic_hard_cap = HARD_MAX_LOT_DEFAULT
     tier_level_str = "Fallback/Default"
     
-    if _TIER_CFG.get("enabled", False) and _TIER_CFG.get("tiers"):
+    if _TIER_CFG.get("enabled", False) and isinstance(_TIER_CFG.get("tiers"), list):
         # Find the highest tier where equity >= min_equity
-        valid_tiers = [t for t in _TIER_CFG["tiers"] if account.equity >= t.get("min_equity", 0)]
+        valid_tiers = [t for t in cast(list, _TIER_CFG["tiers"]) if account.equity >= t.get("min_equity", 0)]
         if valid_tiers:
             active_tier = max(valid_tiers, key=lambda t: t.get("min_equity", 0))
             sym_key = decision.symbol.upper().rstrip("C")

@@ -21,6 +21,7 @@ Gold Session Breakout — จับ breakout ช่วง London/NY สำหร
 """
 
 import pandas as pd
+import pandas_ta as ta
 import app.analysis.indicators as ind
 
 from app.strategy.base import BaseStrategy

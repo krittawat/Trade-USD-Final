@@ -16,6 +16,7 @@ Logic:
 """
 
 import pandas as pd
+import pandas_ta as ta
 import app.analysis.indicators as ind
 
 from app.core.logging import get_logger

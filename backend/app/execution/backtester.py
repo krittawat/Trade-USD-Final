@@ -16,16 +16,37 @@ Backtester — Full candle-by-candle backtest engine with SL/TP simulation.
     - Safety modules: cooldown/regime/session/dampener เหมือน live pipeline
 """
 
+# Standard library imports
+import os
+import sys
 import time
+import math
+import statistics
+import traceback
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Any, cast, Dict, List
+from pathlib import Path
 
+# --- Environment Setup ---
+# Ensure backend directory is in sys.path for internal imports
+CURRENT_DIR = Path(__file__).resolve().parent
+BACKEND_ROOT = CURRENT_DIR.parent.parent # backtester.py is in backend/app/execution/
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
+# Also support legacy 'backend.trader' style imports by adding parent of backend
+TRADE_ROOT = BACKEND_ROOT.parent
+if str(TRADE_ROOT) not in sys.path:
+    sys.path.insert(0, str(TRADE_ROOT))
+
+# Third-party imports
 import pandas as pd
 
+# Internal app imports
 from app.core.logging import get_logger
 from app.domain.enums import Action, RegimeType
-from app.domain.models import Decision, SymbolProfile
+from app.domain.models import Decision, SymbolProfile, RegimeContext
 from app.brain.regime import classify_regime
 from app.risk.regime_filter import RegimeFilter
 from app.risk.cooldown_manager import CooldownManager
@@ -55,7 +76,7 @@ class BacktestTrade:
     lot_size: float = 0.01
     profit_usd: float = 0.0
     exit_reason: str = ""  # "SL", "TP", "SIGNAL_REVERSE", "END_OF_DATA"
-    risk_reward: float = 0.0
+    rr: float = 0.0
     regime: str = "UNKNOWN"
     session: str = ""
     bars_held: int = 0
@@ -112,20 +133,20 @@ class Backtester:
         warmup_bars: int = 50,
         max_dd_limit: float = 0.12,
         # --- Safety modules (same as live) ---
-        regime_filter: RegimeFilter | None = None,
-        cooldown_mgr: CooldownManager | None = None,
-        risk_dampener: RiskDampener | None = None,
-        session_guard: SessionGuard | None = None,
+        regime_filter: Optional[RegimeFilter] = None,
+        cooldown_mgr: Optional[CooldownManager] = None,
+        risk_dampener: Optional[RiskDampener] = None,
+        session_guard: Optional[SessionGuard] = None,
         max_trades_per_session: int = 3,
     ) -> None:
         """
         Args:
-            strategy: Strategy object ที่มี analyze() method
-            initial_equity: ทุนเริ่มต้น ($)
-            risk_per_trade: % risk ต่อเทรด (0.02 = 2%)
-            commission_per_lot: ค่า commission ต่อ lot ($)
-            slippage_points: slippage (points)
-            warmup_bars: จำนวนแท่งแรกที่ข้ามไป (สำหรับ indicator warmup)
+            strategy: Strategy object with analyze() method
+            initial_equity: Starting capital ($)
+            risk_per_trade: % risk per trade (e.g. 0.02 = 2%)
+            commission_per_lot: Commission per lot ($)
+            slippage_points: Slippage in points
+            warmup_bars: Number of bars to skip for indicators
             regime_filter: RegimeFilter for NO-TRADE in sideways
             cooldown_mgr: CooldownManager for post-loss cooldown
             risk_dampener: RiskDampener for dynamic lot reduction
@@ -154,15 +175,6 @@ class Backtester:
     ) -> BacktestResult:
         """
         Run backtest on OHLCV candles.
-
-        Args:
-            candles: DataFrame with [open, high, low, close, tick_volume, time]
-            symbol: Symbol name
-            contract_size: MT5 contract size (100 for Gold)
-            point: Price point value
-
-        Returns:
-            BacktestResult with full statistics
         """
         start_time = time.monotonic()
 
@@ -180,7 +192,6 @@ class Backtester:
         equity_curve: list[dict] = []
         trade_counter = 0
 
-        # ─── Profile (mock) ───
         # Cent symbols (suffix "c") support smaller minimum lot size.
         is_cent_symbol = str(symbol).upper().endswith("C")
         volume_min = 0.0001 if is_cent_symbol else 0.01
@@ -208,6 +219,7 @@ class Backtester:
 
             # ─── Step 1: Check open trade for SL/TP hit ───
             if open_trade is not None:
+                assert open_trade is not None
                 open_trade.bars_held += 1
                 exit_happened = False
 
@@ -222,8 +234,8 @@ class Backtester:
                         open_trade.exit_price = open_trade.tp
                         open_trade.exit_reason = "TP"
                         exit_happened = True
-
                 else:  # SELL
+                    assert open_trade is not None
                     if open_trade.sl > 0 and bar_high >= open_trade.sl:
                         open_trade.exit_price = open_trade.sl
                         open_trade.exit_reason = "SL"
@@ -233,159 +245,158 @@ class Backtester:
                         open_trade.exit_reason = "TP"
                         exit_happened = True
 
-                if exit_happened:
+                if exit_happened and open_trade is not None:
                     open_trade.exit_time = bar_time
-                    open_trade = self._close_trade(open_trade, contract_size)
-                    equity += open_trade.profit_usd
-                    closed_trades.append(open_trade)
+                    closed_trade = self._close_trade(open_trade, contract_size)
+                    equity += closed_trade.profit_usd
+                    closed_trades.append(closed_trade)
 
-                    # ─── Safety: record win/loss ───
-                    if open_trade.profit_usd < 0:
+                    # Safety: record win/loss for modules
+                    if closed_trade.profit_usd < 0:
                         self.cooldown_mgr.record_loss(symbol)
                         self.risk_dampener.record_loss(symbol)
-                    elif open_trade.profit_usd > 0:
+                    elif closed_trade.profit_usd > 0:
                         self.cooldown_mgr.record_win(symbol)
                         self.risk_dampener.record_win(symbol)
 
                     open_trade = None
 
-            # ─── Step 2: Strategy signal (using history up to this bar) ───
-            # Window to last 850 bars to avoid O(n²) copy overhead
-            # (EMA 800 needs 800+ bars, ADX 14 + ATR 14 need ~50 bars)
+            # ─── Step 2: Strategy signal & Regime classification ───
             window_start = max(0, i - 849)
             history = candles.iloc[window_start:i + 1]
+            if len(history) < 50: continue
 
-            if len(history) < 50:
-                continue
-
-            # Classify regime
-            # regime = classify_regime(history)
-            from app.domain.models import RegimeContext
-            from app.domain.enums import RegimeType
-            regime = RegimeContext(regime=RegimeType.TRENDING_UP, actionable=True, reason="MOCK", details={})
+            regime = classify_regime(history)
+            if regime is None:
+                regime = RegimeContext(regime=RegimeType.TRENDING_UP, actionable=True, reason="FALLBACK", details={})
 
             try:
-                decision = self.strategy.analyze(history, profile, regime, equity=equity)
-            except BaseException as e:
-                if isinstance(e, (SystemExit, KeyboardInterrupt)):
-                    raise
-                # Log the error so it's not silent
-                logger.error(f"Error in strategy analyze: {e}", exc_info=True)
-                continue
+                # Prepare context for analyze()
+                try:
+                    bar_time_dt = pd.to_datetime(bar_time)
+                except:
+                    bar_time_dt = datetime.now()
 
-            if decision.action == Action.HOLD:
-                pass  # No signal
-            elif decision.action in (Action.BUY, Action.SELL):
-                action_str = decision.action.value
+                context = {
+                    "symbol": symbol,
+                    "session": "BACKTEST",
+                    "current_session": "BACKTEST",
+                    "current_time": bar_time_dt,
+                    "market_state": {
+                        "bid": bar_close,
+                        "ask": bar_close,
+                        "point": point,
+                        "tick_size": point,
+                    }
+                }
 
-                # Close opposing trade if exists
-                if open_trade is not None and open_trade.action != action_str:
-                    open_trade.exit_price = bar_close
-                    open_trade.exit_time = bar_time
-                    open_trade.exit_reason = "SIGNAL_REVERSE"
-                    open_trade = self._close_trade(open_trade, contract_size)
-                    equity += open_trade.profit_usd
-                    closed_trades.append(open_trade)
-                    open_trade = None
+                # Single Source of Truth: Use same analyze() as live
+                decision = self.strategy.analyze(
+                    candles=history,
+                    profile=profile,
+                    regime=regime.regime,
+                    regime_context=regime,
+                    **context
+                )
 
-                # Open new trade if no position
-                if open_trade is None and decision.stop_loss and decision.stop_loss > 0:
+                if decision and decision.action != Action.HOLD:
+                    # check for reversal
+                    if open_trade is not None:
+                        is_buy = open_trade.action == "BUY"
+                        should_exit = False
+                        if is_buy and decision.action == Action.SELL: should_exit = True
+                        if not is_buy and decision.action == Action.BUY: should_exit = True
 
-                    # ─── DD Circuit Breaker: block new trades if DD > limit ───
-                    current_dd_pct = ((peak_equity - equity) / peak_equity) if peak_equity > 0 else 0
-                    if current_dd_pct > self.max_dd_limit:
-                        continue  # DD exceeded → no new trades until recovery
+                        if should_exit and open_trade is not None:
+                            open_trade.exit_price = bar_close
+                            open_trade.exit_time = bar_time
+                            open_trade.exit_reason = "SIGNAL_REVERSE"
+                            closed_trade = self._close_trade(open_trade, contract_size)
+                            equity += closed_trade.profit_usd
+                            closed_trades.append(closed_trade)
+                            open_trade = None
 
-                    # ─── Safety checks (same as live pipeline) ───
-                    # 1. Regime Filter (Unified)
-                    if not regime.actionable:
-                        print(f"DEBUG {symbol} | TRADE BLOCKED BY REGIME = {regime.regime}")
-                        continue  # NO-TRADE regime → skip
+                    # Open new trade if no position
+                    if open_trade is None and decision.action in (Action.BUY, Action.SELL):
+                        # DD Circuit Breaker
+                        current_dd_pct = ((peak_equity - equity) / peak_equity) if peak_equity > 0 else 0
+                        if current_dd_pct > self.max_dd_limit:
+                            continue
 
-                    # 2. Cooldown check
-                    # cd_ok, _ = self.cooldown_mgr.is_allowed(symbol)
-                    # if not cd_ok:
-                    #     continue  # Cooling down → skip
+                        # Regime Filter
+                        if not regime.actionable:
+                            continue
 
-                    # 3. Session guard (simple session for backtest)
-                    # bt_session = "BACKTEST"
-                    # sg_ok, _ = self.session_guard.is_allowed(symbol, bt_session)
-                    # if not sg_ok:
-                    #     continue  # Max trades reached → skip
+                        action_str = decision.action.value
+                        sl = float(decision.stop_loss or 0.0)
+                        if sl <= 0: continue # Mandatory SL
 
-                    trade_counter += 1
-                    sl_dist = float(abs(bar_close - decision.stop_loss))
+                        trade_counter += 1
+                        sl_dist = abs(bar_close - sl)
+                        if sl_dist <= 0: sl_dist = point * 10.0
 
-                    # Risk-based lot sizing
-                    risk_usd = float(equity * self.risk_per_trade)
-                    lot = float(risk_usd / (sl_dist * contract_size) if sl_dist > 0 else 0.01)
-                    lot = float(max(0.01, min(lot, 10.0)))  # Clamp
-                    lot = round(lot, 2)
+                        # Risk-based lot sizing
+                        risk_usd = float(equity * self.risk_per_trade)
+                        lot = float(risk_usd / (sl_dist * contract_size)) if sl_dist > 0 else 0.01
+                        lot = max(volume_min, min(lot, volume_max))
+                        lot = float(round(lot, 2))
 
-                    # ─── Risk Dampener: reduce lot on loss streak ───
-                    # mult = self.risk_dampener.get_multiplier(symbol)
-                    # if mult < 1.0:
-                    #     lot = max(0.01, round(lot * mult, 2))
+                        # Risk Dampener
+                        mult = float(self.risk_dampener.get_multiplier(symbol))
+                        if mult < 1.0:
+                            lot = max(volume_min, float(round(lot * mult, 2)))
 
-                    open_trade = BacktestTrade(
-                        trade_id=trade_counter,
-                        symbol=symbol,
-                        strategy=getattr(self.strategy, 'name', 'unknown'),
-                        action=action_str,
-                        entry_price=float(bar_close + (self.slippage if action_str == "BUY" else -self.slippage)),
-                        entry_time=str(bar_time),
-                        sl=float(decision.stop_loss),
-                        tp=float(decision.take_profit or 0.0),
-                        lot_size=float(lot),
-                        regime=str(regime.value if hasattr(regime, 'value') else regime),
-                    )
-
-                    # Record trade in session guard
-                    # self.session_guard.record_trade(symbol, bt_session)
-
-            try:
-                # ─── Step 3: Track equity curve (every 10 bars for memory) ───
-                if i % 10 == 0:
-                    # Include unrealized P&L of open trade
-                    unrealized = 0.0
-                    if open_trade:
-                        if open_trade.action == "BUY":
-                            unrealized = (bar_close - open_trade.entry_price) * open_trade.lot_size * contract_size
-                        else:
-                            unrealized = (open_trade.entry_price - bar_close) * open_trade.lot_size * contract_size
-
-                    current_equity = equity + unrealized
-                    equity_curve.append({
-                        "bar": i,
-                        "time": bar_time,
-                        "equity": round(current_equity, 2),
-                    })
-
-                    # Drawdown tracking
-                    if current_equity > peak_equity:
-                        peak_equity = current_equity
-                    dd_usd = peak_equity - current_equity
-                    dd_pct = (dd_usd / peak_equity * 100) if peak_equity > 0 else 0
-                    if dd_usd > max_dd_usd:
-                        max_dd_usd = dd_usd
-                    if dd_pct > max_dd_pct:
-                        max_dd_pct = dd_pct
+                        open_trade = BacktestTrade(
+                            trade_id=trade_counter,
+                            symbol=symbol,
+                            strategy=getattr(self.strategy, 'name', 'unknown'),
+                            action=action_str,
+                            entry_price=float(bar_close + (self.slippage if action_str == "BUY" else -self.slippage)),
+                            entry_time=str(bar_time),
+                            sl=sl,
+                            tp=float(decision.take_profit or 0.0),
+                            lot_size=float(lot),
+                            regime=str(regime.regime.value if hasattr(regime.regime, 'value') else regime.regime),
+                        )
             except Exception as e:
-                import traceback
-                print(f"DEBUG CRASH Step 3: {e}")
-                traceback.print_exc()
-                raise e
+                logger.error(f"Error in backtest cycle: {e}", exc_info=True)
+                continue
 
-        # ─── Force close open trade at end ───
+            # ─── Step 3: Track equity curve ───
+            if i % 10 == 0 or i == total_bars - 1:
+                unrealized = 0.0
+                if open_trade:
+                    if open_trade.action == "BUY":
+                        unrealized = (bar_close - open_trade.entry_price) * open_trade.lot_size * contract_size
+                    else:
+                        unrealized = (open_trade.entry_price - bar_close) * open_trade.lot_size * contract_size
+
+                current_equity = equity + unrealized
+                equity_curve.append({
+                    "bar": i,
+                    "time": bar_time,
+                    "equity": round(current_equity, 2),
+                })
+
+                if current_equity > peak_equity:
+                    peak_equity = current_equity
+                dd_usd = peak_equity - current_equity
+                dd_pct = (dd_usd / peak_equity * 100) if peak_equity > 0 else 0
+                if dd_usd > max_dd_usd: max_dd_usd = dd_usd
+                if dd_pct > max_dd_pct: max_dd_pct = dd_pct
+
+        # ─── Force close at end ───
+        # ─── Force close at end ───
         if open_trade is not None:
-            open_trade.exit_price = candles.iloc[-1]["close"]
+            open_trade.exit_price = float(candles.iloc[-1]["close"])
             open_trade.exit_time = str(candles.iloc[-1].get("time", total_bars))
             open_trade.exit_reason = "END_OF_DATA"
-            open_trade = self._close_trade(open_trade, contract_size)
-            equity += open_trade.profit_usd
-            closed_trades.append(open_trade)
+            trade_to_close = cast(BacktestTrade, open_trade)
+            closed_trade = self._close_trade(trade_to_close, contract_size)
+            equity += closed_trade.profit_usd
+            closed_trades.append(closed_trade)
+            open_trade = None
 
-        # ─── Compute statistics ───
         duration = time.monotonic() - start_time
         result = self._compute_stats(
             closed_trades, equity_curve,
@@ -415,9 +426,8 @@ class Backtester:
 
     def _close_trade(self, trade: BacktestTrade, contract_size: float) -> BacktestTrade:
         try:
-            # 1. Commission / Fees (Simplification: $X per standard lot)
-            commission_per_lot = 7.0  # Example: $7 per 100oz Gold
-            comm_usd = trade.lot_size * commission_per_lot
+            # 1. Commission / Fees
+            comm_usd = trade.lot_size * self.commission_per_lot
 
             # 2. Points & P&L
             if trade.action == "BUY":
@@ -485,13 +495,12 @@ class Backtester:
         win_rate = (win_count / total * 100) if total > 0 else 0
         pf = (gross_profit / gross_loss) if gross_loss > 0 else float('inf')
         expectancy = total_profit / total if total > 0 else 0
-        avg_rr = sum(t.risk_reward for t in trades) / total if total > 0 else 0
+        avg_rr = sum(t.rr for t in trades) / total if total > 0 else 0
         avg_bars = sum(t.bars_held for t in trades) / total if total > 0 else 0
 
         # Sharpe ratio (simplified: daily returns)
         returns = [t.profit_usd / initial_equity for t in trades]
         if len(returns) > 1:
-            import statistics
             mean_ret = statistics.mean(returns)
             std_ret = statistics.stdev(returns)
             sharpe = (mean_ret / std_ret * (252 ** 0.5)) if std_ret > 0 else 0
@@ -526,7 +535,7 @@ class Backtester:
                 "sl": t.sl,
                 "tp": t.tp,
                 "pnl": t.profit_usd,
-                "rr": t.risk_reward,
+                "rr": t.rr,
                 "reason": t.exit_reason,
                 "bars": t.bars_held,
                 "regime": t.regime,

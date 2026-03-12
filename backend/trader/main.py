@@ -6,10 +6,17 @@ from pathlib import Path
 import math
 from copy import deepcopy
 
-# Ensure project root is on sys.path so `backend.trader.*` imports work from any CWD
-ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "backend")) # Allow `from app...` imports
+# --- Environment Setup ---
+# Ensure backend directory is in sys.path for internal imports
+CURRENT_DIR = Path(__file__).resolve().parent
+BACKEND_ROOT = CURRENT_DIR.parent
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
+# Also support legacy 'backend.trader' style imports by adding parent of backend
+TRADE_ROOT = BACKEND_ROOT.parent
+if str(TRADE_ROOT) not in sys.path:
+    sys.path.insert(0, str(TRADE_ROOT))
 
 import pandas as pd
 import logging
@@ -291,13 +298,17 @@ def _apply_runtime_live_symbol_overrides(mode: str) -> None:
         selected_symbols = live_symbols_override
 
     if selected_symbols:
-        CONFIG["symbols"] = selected_symbols
-        CONFIG["symbol_timeframes"] = _filter_tf_map(DEFAULT_SYMBOL_TIMEFRAMES, selected_symbols)
-        CONFIG["execution_timeframes"] = _filter_tf_map(DEFAULT_EXECUTION_TIMEFRAMES, selected_symbols)
+        if isinstance(CONFIG.get("symbol_timeframes"), dict):
+            CONFIG["symbol_timeframes"] = _filter_tf_map(cast(dict, DEFAULT_SYMBOL_TIMEFRAMES), selected_symbols)
+        if isinstance(CONFIG.get("execution_timeframes"), dict):
+            CONFIG["execution_timeframes"] = _filter_tf_map(cast(dict, DEFAULT_EXECUTION_TIMEFRAMES), selected_symbols)
 
+        # Ensure defaults exist for the current symbols
         for sym in selected_symbols:
-            CONFIG["symbol_timeframes"].setdefault(sym, deepcopy(CONFIG["timeframes"]))
-            CONFIG["execution_timeframes"].setdefault(sym, ["M5", "M15", "H1"])
+            if isinstance(CONFIG.get("symbol_timeframes"), dict):
+                CONFIG["symbol_timeframes"].setdefault(sym, deepcopy(CONFIG.get("timeframes", [])))
+            if isinstance(CONFIG.get("execution_timeframes"), dict):
+                CONFIG["execution_timeframes"].setdefault(sym, ["M5", "M15", "H1"])
 
         logger.warning(f"🧭 [RUNTIME] LIVE symbols active: {', '.join(CONFIG['symbols'])}")
 
@@ -308,9 +319,13 @@ def _apply_runtime_live_symbol_overrides(mode: str) -> None:
 
     if live_tf_overrides:
         active_symbols = set(CONFIG["symbols"]) | set(CONFIG.get("shadow_symbols", []))
+        tf_map = CONFIG.get("symbol_timeframes")
+        exec_tf_map = CONFIG.get("execution_timeframes")
         for broker_symbol, timeframes in live_tf_overrides.items():
-            CONFIG["symbol_timeframes"][broker_symbol] = list(timeframes)
-            CONFIG["execution_timeframes"][broker_symbol] = list(timeframes)
+            if isinstance(tf_map, dict):
+                tf_map[broker_symbol] = list(timeframes)
+            if isinstance(exec_tf_map, dict):
+                exec_tf_map[broker_symbol] = list(timeframes)
             status = "ACTIVE" if broker_symbol in active_symbols else "INACTIVE"
             logger.warning(
                 f"🧭 [RUNTIME] LIVE TF pins [{status}] {broker_symbol} -> {','.join(timeframes)}"
@@ -356,6 +371,23 @@ def _resolve_runtime_strategy_overrides(mode: str) -> dict:
         overrides["strategy_eval_min_confidence"] = float(runtime_cfg.get("live_strategy_min_confidence", 0.68) or 0.68)
 
     return overrides
+
+
+def _runtime_enables_news_session_strategy() -> bool:
+    if bool((_SETTINGS.get("strategy", {}) or {}).get("enable_news_session_momentum", False)):
+        return True
+
+    profile = str(RUNTIME_STRATEGY_OVERRIDES.get("strategy_profile") or "").strip().lower()
+    if profile == "news_session_momentum":
+        return True
+
+    for key in ("strategy_whitelist", "force_enabled_models"):
+        values = RUNTIME_STRATEGY_OVERRIDES.get(key) or []
+        if isinstance(values, str):
+            values = [values]
+        if any(str(value).upper() == "NEWS_SESSION_MOMENTUM" for value in values):
+            return True
+    return False
 
 
 def _resolve_override_toggle(args) -> bool:
@@ -529,8 +561,12 @@ def _apply_pinned_execution_timeframes() -> None:
         return
 
     active_symbols = set(CONFIG["symbols"]) | set(CONFIG.get("shadow_symbols", []))
+    exec_tf_map = CONFIG.get("execution_timeframes")
+    if not isinstance(exec_tf_map, dict):
+        return
+
     for broker_symbol, timeframes in pinned.items():
-        CONFIG["execution_timeframes"][broker_symbol] = list(timeframes)
+        exec_tf_map[broker_symbol] = list(timeframes)
         status = "ACTIVE" if broker_symbol in active_symbols else "INACTIVE"
         logger.info(
             f"  📌 Pinned TF override [{status}] {broker_symbol} -> {','.join(timeframes)}"
@@ -955,6 +991,7 @@ def tick_cycle(mode: str, symbol: str, timeframe_str: str, executor: Executor, c
     try:
         from backend.trader.data.mapper import mapper
         from backend.trader.execution.order_manager import manage_pending_orders
+        from backend.trader.services.news_filter import news_filter
 
         if cycle_cache is None:
             cycle_cache = {}
@@ -1054,12 +1091,20 @@ def tick_cycle(mode: str, symbol: str, timeframe_str: str, executor: Executor, c
             htf_cache[symbol] = htf_val
 
         session_label = time_utils.assign_session(datetime.now(timezone.utc))
+        bar_ts = pd.NaT
         try:
             bar_ts = pd.to_datetime(latest.get("time"), unit="s", utc=True, errors="coerce")
+            if pd.isna(bar_ts):
+                bar_ts = pd.to_datetime(latest.get("time"), utc=True, errors="coerce")
             if not pd.isna(bar_ts):
                 session_label = time_utils.assign_session(bar_ts.to_pydatetime())
         except Exception:
             pass
+
+        news_ctx = news_filter.get_event_context(symbol, now=(bar_ts.to_pydatetime() if not pd.isna(bar_ts) else datetime.now(timezone.utc)))
+        market_state["is_news"] = bool(news_ctx.get("general_block_active", False))
+        market_state["news_trade_window"] = bool(news_ctx.get("trade_window_active", False))
+        market_state["news_event"] = news_ctx.get("active_event")
 
         context = {
             "symbol": symbol,
@@ -1068,6 +1113,9 @@ def tick_cycle(mode: str, symbol: str, timeframe_str: str, executor: Executor, c
             "htf_ema_align": htf_val,
             "session": session_label,
             "current_session": session_label,
+            "current_time": (bar_ts.to_pydatetime() if not pd.isna(bar_ts) else datetime.now(timezone.utc)),
+            "market_state": dict(market_state),
+            "news_context": news_ctx,
         }
         if RUNTIME_STRATEGY_OVERRIDES:
             context.update(RUNTIME_STRATEGY_OVERRIDES)
@@ -1180,7 +1228,7 @@ def tick_cycle(mode: str, symbol: str, timeframe_str: str, executor: Executor, c
                 }
                 logger.info("🥇 [CACHE] XAU signal saved for XAG follower")
         elif engine_result.status == "blocked":
-            block_msg = f"  🚫 {C.RED}BLOCKED{C.RST}: {engine_result.blocked_reasons}"
+            block_msg = f"  🚫 {C.RED}BLOCKED{C.RST}: {engine_result.reason}"
             logger.info(block_msg)
             notify_trade_signal(
                 signal,
@@ -1355,6 +1403,7 @@ def main():
                     maintenance_reason=maint_reason,
                     news_blocked=news_blocked,
                     lead_symbol_news_safe=news_filter.is_safe(CONFIG["symbols"][0]),
+                    allow_news_cycle=_runtime_enables_news_session_strategy(),
                     manage_positions=manage_open_positions,
                     logger=logger,
                 ):
@@ -1373,11 +1422,16 @@ def main():
                                     risk_engine.trigger_cooldown(std_symbol, "Loss")
 
                                 a_now = get_real_account_state(mt5)
+                                lot = getattr(d, "volume", None)
+                                if lot is not None:
+                                    lot = round(float(lot), 2)
+                                else:
+                                    lot = 0.01
                                 notify_trade_close(
                                     symbol=std_symbol,
                                     side="BUY" if d.type == 1 else "SELL",
                                     profit=d.profit,
-                                    lot=d.volume,
+                                    lot=lot,
                                     equity=a_now['equity'],
                                     daily_pnl=a_now['daily_pnl'],
                                     comment=d.comment

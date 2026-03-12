@@ -17,6 +17,7 @@ Target: Compound Growth 300 THB/day++ เมื่อพอร์ตโตเพ
 """
 
 import pandas as pd
+import pandas_ta as ta
 import app.analysis.indicators as ind
 import numpy as np
 import logging

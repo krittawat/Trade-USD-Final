@@ -12,6 +12,7 @@ Key differences from GoldScalpPro:
   - Removed session penalties (keep parameters stable)
 """
 import pandas as pd
+import pandas_ta as ta
 import app.analysis.indicators as ind
 import numpy as np
 import logging
@@ -69,7 +70,7 @@ class GoldScalpWR60Strategy(BaseStrategy):
             "target": "WR ≥ 60%"
         }
 
-    def analyze(self, df: pd.DataFrame, profile_or_symbol=None, regime=None, **kwargs) -> StrategyDecision:
+    def analyze(self, candles: pd.DataFrame, profile_or_symbol=None, regime=None, **kwargs) -> StrategyDecision:
         """
         WR60 Analysis — Confluence scoring with TIGHT TP.
         Compatible with factory call: analyze(candles, profile, regime)
@@ -81,7 +82,7 @@ class GoldScalpWR60Strategy(BaseStrategy):
             symbol = profile_or_symbol
         else:
             symbol = "XAUUSD"
-        if df is None or len(df) < 100:
+        if candles is None or len(candles) < 100:
             return StrategyDecision(signal="NO_TRADE", reason="Insufficient data")
 
         # Brain check
@@ -90,7 +91,7 @@ class GoldScalpWR60Strategy(BaseStrategy):
             return StrategyDecision(signal="NO_TRADE", reason=f"Brain Block: {regime_context.reason}")
 
         # Ensure indicators
-        df = self._ensure_indicators(df)
+        df = self._ensure_indicators(candles)
 
         r = df.iloc[-1]
         close = float(r['close'])
@@ -120,7 +121,7 @@ class GoldScalpWR60Strategy(BaseStrategy):
 
         # ── High Volatility Block ──
         if regime_context:
-            regime_val = regime_context.regime.value
+            regime_val = getattr(regime_context.regime, "value", str(regime_context.regime))
             if regime_val == "HIGH_VOLATILITY":
                 return StrategyDecision(signal="NO_TRADE", reason="High Volatility Block")
 

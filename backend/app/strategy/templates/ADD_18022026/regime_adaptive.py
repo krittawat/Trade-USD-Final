@@ -21,6 +21,7 @@ Key Design:
 
 import numpy as np
 import pandas as pd
+import pandas_ta as ta
 import app.analysis.indicators as ind
 from typing import Optional, Dict, Tuple
 
@@ -256,9 +257,10 @@ class RegimeAdaptiveStrategy(BaseStrategy):
         
         # --- Patience Mode (No-Trade Regimes) ---
         if effective_regime in (RegimeType.NEWS_SPIKE, RegimeType.UNKNOWN):
+            regime_val = getattr(effective_regime, "value", str(effective_regime))
             return self.create_hold(
                 symbol, 
-                f"Patience Mode: {effective_regime.value} — waiting for clear setup"
+                f"Patience Mode: {regime_val} — waiting for clear setup"
             )
         
         # --- Dispatch to sub-module ---
@@ -277,12 +279,14 @@ class RegimeAdaptiveStrategy(BaseStrategy):
             decision = self._fakeout_hunter(candles, profile, indicators, p)
         
         if decision is None:
-            return self.create_hold(symbol, f"No valid setup in {effective_regime.value}")
+            regime_val = getattr(effective_regime, "value", str(effective_regime))
+            return self.create_hold(symbol, f"No valid setup in {regime_val}")
         
         # --- Tag the decision ---
         if decision.action != Action.HOLD:
             decision.tags.append("regime_adaptive")
-            decision.tags.append(f"regime:{effective_regime.value}")
+            regime_val = getattr(effective_regime, "value", str(effective_regime))
+            decision.tags.append(f"regime:{regime_val}")
             decision.debug["regime"] = effective_regime.value
             decision.debug["adx"] = indicators["adx"]
             decision.debug["atr_ratio"] = indicators["atr_ratio"]

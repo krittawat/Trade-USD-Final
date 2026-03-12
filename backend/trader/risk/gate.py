@@ -74,6 +74,11 @@ class RiskEngine:
             return merged
         return base_cfg
 
+    @staticmethod
+    def _execution_guard(signal: dict) -> dict:
+        guard = signal.get("execution_guard", {})
+        return dict(guard) if isinstance(guard, dict) else {}
+
     def risk_gate(self, signal: dict, account_state: dict, market_state: dict,
                   opus_status=None, current_session: str = "UNKNOWN",
                   session_consecutive_losses: int = None) -> dict:
@@ -217,6 +222,10 @@ class RiskEngine:
             logger.info(f"🛡️ Monday Open Guard: Using tighter spread limit {effective_max_spread} for {symbol}")
 
         current_spread = market_state.get('spread', 0)
+        execution_guard = self._execution_guard(signal)
+        spread_override = float(execution_guard.get("max_spread_points", 0.0) or 0.0)
+        if spread_override > 0:
+            effective_max_spread = min(float(effective_max_spread), spread_override)
         if current_spread > effective_max_spread:
             reasons.append(f"BLOCKED: Spread {current_spread} > Max allowed {effective_max_spread} for {symbol} ({base_symbol}).")
             allowed = False
@@ -227,9 +236,17 @@ class RiskEngine:
             logger.info(f"⚠️ High Sensitivity: XAU position monitoring active for Monday Open.")
 
         # 6. News filter (Institutional + Manual Override)
+        news_model = str(signal.get("model", "")).upper()
+        news_trade_window = bool(market_state.get("news_trade_window", False))
         if not backtest_mode:
             from backend.trader.services.news_filter import news_filter
-            if not news_filter.is_safe(symbol) or market_state.get("is_news", False):
+
+            live_news_block = market_state.get("is_news", False) or (not news_filter.is_safe(symbol))
+            if news_model == "NEWS_SESSION_MOMENTUM":
+                if not news_trade_window:
+                    reasons.append("BLOCKED: NEWS_SESSION_MOMENTUM requires an active news trade window.")
+                    allowed = False
+            elif live_news_block:
                 reasons.append("BLOCKED: Trading inside ±30-min HIGH-impact news window.")
                 allowed = False
 

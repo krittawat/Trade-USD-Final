@@ -1,0 +1,26 @@
+[
+  {
+    "title": "US CPI y/y",
+    "currency": "USD",
+    "time": "2026-03-10T13:30:00+00:00",
+    "impact": "HIGH"
+  },
+  {
+    "title": "BOE Rate Decision",
+    "currency": "GBP",
+    "time": "2026-03-12T12:00:00+00:00",
+    "impact": "HIGH"
+  },
+  {
+    "title": "ECB Press Conference",
+    "currency": "EUR",
+    "time": "2026-03-12T13:45:00+00:00",
+    "impact": "HIGH"
+  },
+  {
+    "title": "BOJ Rate Statement",
+    "currency": "JPY",
+    "time": "2026-03-18T03:00:00+00:00",
+    "impact": "HIGH"
+  }
+]

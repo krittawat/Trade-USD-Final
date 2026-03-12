@@ -24,6 +24,71 @@ class RiskManager:
     def __init__(self, config: EngineConfig) -> None:
         self.config = config
 
+    @staticmethod
+    def _raw_guard(signal: StrategySignal) -> dict:
+        guard = signal.raw.get("execution_guard", {}) if isinstance(signal.raw, dict) else {}
+        return dict(guard) if isinstance(guard, dict) else {}
+
+    @staticmethod
+    def _risk_profile(signal: StrategySignal) -> dict:
+        profile = signal.raw.get("risk_profile", {}) if isinstance(signal.raw, dict) else {}
+        return dict(profile) if isinstance(profile, dict) else {}
+
+    def _risk_pct_for(self, signal: StrategySignal) -> float:
+        configured = float(self.config.base_risk_pct)
+        override = float(self._risk_profile(signal).get("risk_pct", 0.0) or 0.0)
+        if override <= 0:
+            return configured
+        return min(configured, override)
+
+    def _build_signal_level_targets(
+        self,
+        signal: StrategySignal,
+        market: MarketSnapshot,
+        entry_price: float,
+    ) -> tuple[float, float, float, float] | None:
+        profile = self._risk_profile(signal)
+        use_signal_levels = bool(
+            signal.raw.get("engine_use_signal_levels", False)
+            or profile.get("use_signal_levels", False)
+        )
+        if not use_signal_levels:
+            return None
+
+        raw_entry = float(signal.raw.get("entry_price", signal.entry_price) or signal.entry_price or 0.0)
+        raw_sl = float(signal.raw.get("sl", 0.0) or 0.0)
+        raw_tp1 = float(signal.raw.get("tp1", 0.0) or 0.0)
+        if raw_entry <= 0 or raw_sl <= 0 or raw_tp1 <= 0:
+            return None
+
+        stop_distance = abs(raw_entry - raw_sl)
+        min_stop_atr = float(profile.get("min_stop_atr", 0.0) or 0.0)
+        max_stop_atr = float(profile.get("max_stop_atr", 0.0) or 0.0)
+        min_stop = max(market.point_size * 10.0, market.atr * min_stop_atr) if min_stop_atr > 0 else market.point_size * 10.0
+        max_stop = market.atr * max_stop_atr if max_stop_atr > 0 else 0.0
+
+        stop_distance = max(stop_distance, min_stop)
+        if max_stop > 0:
+            stop_distance = min(stop_distance, max(max_stop, min_stop))
+
+        tp1_distance = max(abs(raw_tp1 - raw_entry), stop_distance)
+        raw_tp2 = float(signal.raw.get("tp2", 0.0) or 0.0)
+        raw_tp3 = float(signal.raw.get("tp3", 0.0) or 0.0)
+        tp2_distance = abs(raw_tp2 - raw_entry) if raw_tp2 > 0 else (tp1_distance * 1.35)
+        tp3_distance = abs(raw_tp3 - raw_entry) if raw_tp3 > 0 else (tp2_distance * 1.35)
+
+        if signal.side == "BUY":
+            stop_loss = _round_to_tick(entry_price - stop_distance, market.tick_size)
+            take_profit = _round_to_tick(entry_price + tp1_distance, market.tick_size)
+            take_profit_2 = _round_to_tick(entry_price + tp2_distance, market.tick_size)
+            take_profit_3 = _round_to_tick(entry_price + tp3_distance, market.tick_size)
+        else:
+            stop_loss = _round_to_tick(entry_price + stop_distance, market.tick_size)
+            take_profit = _round_to_tick(entry_price - tp1_distance, market.tick_size)
+            take_profit_2 = _round_to_tick(entry_price - tp2_distance, market.tick_size)
+            take_profit_3 = _round_to_tick(entry_price - tp3_distance, market.tick_size)
+        return stop_loss, take_profit, take_profit_2, take_profit_3
+
     def build_order_plan(
         self,
         signal: StrategySignal,
@@ -46,26 +111,33 @@ class RiskManager:
         if entry_price <= 0:
             return None, "entry_price_unavailable"
 
-        stop_multiplier = self.config.stop_multiplier(signal.standard_symbol)
-        stop_distance = max(market.atr * stop_multiplier, market.point_size * 10.0)
-        rr1, rr2, rr3 = self.config.rr_levels_for(signal.standard_symbol)
-
-        if signal.side == "BUY":
-            stop_loss = _round_to_tick(entry_price - stop_distance, market.tick_size)
-            take_profit = _round_to_tick(entry_price + (stop_distance * rr1), market.tick_size)
-            take_profit_2 = _round_to_tick(entry_price + (stop_distance * rr2), market.tick_size)
-            take_profit_3 = _round_to_tick(entry_price + (stop_distance * rr3), market.tick_size)
+        custom_targets = self._build_signal_level_targets(signal, market, entry_price)
+        if custom_targets is not None:
+            stop_loss, take_profit, take_profit_2, take_profit_3 = custom_targets
+            stop_distance = abs(entry_price - stop_loss)
+            rr1 = abs(take_profit - entry_price) / max(stop_distance, 1e-9)
         else:
-            stop_loss = _round_to_tick(entry_price + stop_distance, market.tick_size)
-            take_profit = _round_to_tick(entry_price - (stop_distance * rr1), market.tick_size)
-            take_profit_2 = _round_to_tick(entry_price - (stop_distance * rr2), market.tick_size)
-            take_profit_3 = _round_to_tick(entry_price - (stop_distance * rr3), market.tick_size)
+            stop_multiplier = self.config.stop_multiplier(signal.standard_symbol)
+            stop_distance = max(market.atr * stop_multiplier, market.point_size * 10.0)
+            rr1, rr2, rr3 = self.config.rr_levels_for(signal.standard_symbol)
+
+            if signal.side == "BUY":
+                stop_loss = _round_to_tick(entry_price - stop_distance, market.tick_size)
+                take_profit = _round_to_tick(entry_price + (stop_distance * rr1), market.tick_size)
+                take_profit_2 = _round_to_tick(entry_price + (stop_distance * rr2), market.tick_size)
+                take_profit_3 = _round_to_tick(entry_price + (stop_distance * rr3), market.tick_size)
+            else:
+                stop_loss = _round_to_tick(entry_price + stop_distance, market.tick_size)
+                take_profit = _round_to_tick(entry_price - (stop_distance * rr1), market.tick_size)
+                take_profit_2 = _round_to_tick(entry_price - (stop_distance * rr2), market.tick_size)
+                take_profit_3 = _round_to_tick(entry_price - (stop_distance * rr3), market.tick_size)
 
         risk_per_lot = (stop_distance / market.tick_size) * market.tick_value
         if risk_per_lot <= 0:
             return None, "risk_per_lot_invalid"
 
-        risk_budget_usd = portfolio.equity * (self.config.base_risk_pct / 100.0)
+        risk_pct = self._risk_pct_for(signal)
+        risk_budget_usd = portfolio.equity * (risk_pct / 100.0)
         raw_lot = risk_budget_usd / risk_per_lot
         lot_size = _round_down_to_step(raw_lot, market.volume_step)
         if lot_size < market.volume_min:
@@ -95,7 +167,7 @@ class RiskManager:
                 take_profit_3=take_profit_3,
                 stop_distance=stop_distance,
                 rr=max(0.0, rr1),
-                risk_pct=float(self.config.base_risk_pct),
+                risk_pct=float(risk_pct),
                 risk_usd=max(0.0, actual_risk_usd),
                 lot_size=lot_size,
                 spread_points=float(market.spread_points),
@@ -118,13 +190,20 @@ class RiskManager:
         if not self._session_allowed(signal.standard_symbol, market.session):
             reasons.append(f"session_filter:{market.session}")
 
+        raw_guard = self._raw_guard(signal)
         spread_limit = self.config.spread_limit(signal.standard_symbol)
+        spread_override = float(raw_guard.get("max_spread_points", 0.0) or 0.0)
+        if spread_override > 0:
+            spread_limit = min(spread_limit, spread_override)
         if market.spread_points > spread_limit:
             reasons.append(
                 f"spread_filter:{market.spread_points:.1f}>{spread_limit:.1f}"
             )
 
         slippage_limit = self.config.slippage_limit(signal.standard_symbol)
+        slippage_override = float(raw_guard.get("max_slippage_points", 0.0) or 0.0)
+        if slippage_override > 0:
+            slippage_limit = min(slippage_limit, slippage_override)
         if signal.entry_type != "LIMIT" and plan.estimated_slippage_points > slippage_limit:
             reasons.append(
                 f"slippage_filter:{plan.estimated_slippage_points:.1f}>{slippage_limit:.1f}"
