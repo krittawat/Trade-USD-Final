@@ -42,6 +42,7 @@ from .aether_flow_live import signal_aether_flow
 from .indices_ultimate import signal_indices_ultimate
 from .indicator_confluence import signal_indicator_confluence
 from .tick_volume_gate import evaluate_tick_volume
+from .alpha_v7_ict_live import signal_alpha_v7_ict
 
 
 from backend.trader.features.pattern_recognition import analyze_patterns
@@ -86,6 +87,7 @@ ENABLE_BTC_ELITE = _STRATEGY_CFG.get("enable_btc_elite", False)
 ENABLE_BTC_ORACLE = _STRATEGY_CFG.get("enable_btc_oracle", True)
 ENABLE_CORRELATION_SNIPER = _STRATEGY_CFG.get("enable_correlation_sniper", True)
 ENABLE_AETHER_FLOW = _STRATEGY_CFG.get("enable_aether_flow", True)
+ENABLE_ALPHA_V7 = _STRATEGY_CFG.get("enable_alpha_v7", True)
 ENABLE_INDICATOR_CONFLUENCE = _STRATEGY_CFG.get("enable_indicator_confluence", True)
 MOMENTUM_MODELS = {"MOMENTUM_RIDER", "MOMENTUM_SCALPER_V2", "USOIL_MOMENTUM"}
 
@@ -135,6 +137,24 @@ def _resolve_forced_models(context: dict) -> set:
     if isinstance(forced, str):
         forced = [forced]
     return {str(name).strip().upper() for name in forced if str(name).strip()}
+
+
+def _resolve_whitelisted_models(context: dict) -> set:
+    whitelist = context.get("strategy_whitelist") or context.get("model_whitelist") or []
+    if isinstance(whitelist, str):
+        whitelist = [whitelist]
+    return {str(name).strip().upper() for name in whitelist if str(name).strip()}
+
+
+def _is_alpha_v7_focus_mode(context: dict) -> bool:
+    profile = str(context.get("strategy_profile") or context.get("live_strategy_profile") or "").strip().lower()
+    forced = _resolve_forced_models(context)
+    whitelist = _resolve_whitelisted_models(context)
+    return (
+        profile == "alpha_v7_ict"
+        or "ALPHA_V7_ICT" in forced
+        or whitelist == {"ALPHA_V7_ICT"}
+    )
 
 
 def _is_model_enabled(context: dict, model_name: str, enabled_by_config: bool) -> bool:
@@ -249,7 +269,8 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
         return None
 
     # AntiChop pre-filter
-    if ENABLE_ANTICHOP:
+    alpha_v7_focus_mode = _is_alpha_v7_focus_mode(context)
+    if ENABLE_ANTICHOP and not alpha_v7_focus_mode:
         is_choppy, chop_reason = is_market_choppy(df)
         if is_choppy:
             if "BTC" in _sym_debug:
@@ -257,6 +278,8 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
             else:
                 logger.debug(f"CHOP: {chop_reason}")
             return None
+    elif ENABLE_ANTICHOP and alpha_v7_focus_mode:
+        logger.debug(f"CHOP BYPASS: {_sym_debug} running ALPHA_V7_ICT focus mode")
 
     # ─── PHASE 4: TIME-GATING (NY CLOSE SPREAD GUARD) ──────────
     # Exness spreads widen and liquidity drops during NY Close (Hour 20:00-21:00 Server Time)
@@ -290,7 +313,7 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
     }
     
     # Pre-fetch for common strategies
-    for strat in ['gold_elite', 'gold_scalp_pro', 'ranging_sniper', 'alpha_v6', 'btc_elite_v2', 'usoil_elite', 'indices_ultimate', 'rapid_pullback']:
+    for strat in ['gold_elite', 'gold_scalp_pro', 'ranging_sniper', 'alpha_v6', 'alpha_v7_ict', 'btc_elite_v2', 'usoil_elite', 'indices_ultimate', 'rapid_pullback']:
         params = brain_bridge.get_evolved_params(symbol, regime_name, strat)
         if params:
             slot = evolved_ctx['brain_params'].setdefault(strat, {})
@@ -389,6 +412,9 @@ def select_and_generate_signal(df: pd.DataFrame, context: dict, events: list,
 
     if _is_model_enabled(evolved_ctx, "INDICES_ULTIMATE", ENABLE_INDICES_ULTIMATE) and ("30" in _sym_debug or "TEC" in _sym_debug or "NAS" in _sym_debug):
         candidates.append(signal_indices_ultimate(df, evolved_ctx))
+
+    if _is_model_enabled(evolved_ctx, "ALPHA_V7_ICT", ENABLE_ALPHA_V7):
+        candidates.append(signal_alpha_v7_ict(df, evolved_ctx))
 
     if events:
         candidates.append(signal_liquidity_hunter(df, events, evolved_ctx))

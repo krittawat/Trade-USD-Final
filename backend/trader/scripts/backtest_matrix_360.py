@@ -542,6 +542,7 @@ def main() -> int:
             "usoil_momentum",
             "rapid_pullback",
             "indicator_confluence",
+            "alpha_v7_ict",
         ],
         default="all",
         help="Trader-engine selector profile to run across the matrix.",

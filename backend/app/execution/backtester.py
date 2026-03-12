@@ -268,12 +268,9 @@ class Backtester:
                 decision = self.strategy.analyze(history, profile, regime, equity=equity)
             except BaseException as e:
                 if isinstance(e, (SystemExit, KeyboardInterrupt)):
-                    # Only re-raise true keyboard interrupts (check traceback)
-                    import traceback
-                    tb_str = traceback.format_exc()
-                    if "pandas_ta" in tb_str or "pandas" in tb_str:
-                        continue  # pandas_ta C-extension error, not real Ctrl+C
                     raise
+                # Log the error so it's not silent
+                logger.error(f"Error in strategy analyze: {e}", exc_info=True)
                 continue
 
             if decision.action == Action.HOLD:

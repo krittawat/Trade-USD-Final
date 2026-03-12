@@ -2,11 +2,19 @@
 Go-Live Readiness Check
 """
 import sys, os, io, traceback
+from pathlib import Path
 
 # Force UTF-8 output
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
+VERIFY_DIR = Path(__file__).resolve().parent
+BACKEND_DIR = VERIFY_DIR.parents[1]
+PROJECT_ROOT = VERIFY_DIR.parents[2]
+
+for import_root in (PROJECT_ROOT, BACKEND_DIR):
+    import_root_str = str(import_root)
+    if import_root_str not in sys.path:
+        sys.path.insert(0, import_root_str)
 
 results = {}
 
@@ -54,8 +62,18 @@ print("3. Strategy Factory: Registry")
 print("=" * 60)
 try:
     from app.strategy.factory import StrategyFactory
+    from app.core.config import get_settings
+    from app.db.sqlite import SQLiteStore
+
+    settings = get_settings()
+    db = SQLiteStore(settings)
+    db.connect()
+
     factory = StrategyFactory()
+    loaded = factory.auto_register(db)
     strats = list(factory._strategies.keys())
+    if loaded <= 0 or not strats:
+        raise RuntimeError("StrategyFactory loaded 0 strategies after auto_register()")
     print(f"  [PASS] {len(strats)} strategies: {strats[:8]}...")
     results["factory"] = f"PASS ({len(strats)} strats)"
 except Exception as e:

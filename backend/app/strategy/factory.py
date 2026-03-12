@@ -69,6 +69,11 @@ def detect_asset_class(symbol: str) -> str:
     return "*"
 
 
+def _normalize_symbol_lookup(symbol: str) -> str:
+    """Normalize broker suffix variations like XAUUSDc/XAUUSDm -> XAUUSD."""
+    return str(symbol or "").strip().upper().rstrip("CM.")
+
+
 def _normalize_strategy_name(name: str) -> str:
     """Normalize strategy key for robust matching (vfinal == V-FINAL)."""
     if not name:
@@ -374,6 +379,7 @@ class StrategyFactory:
 
     def _lookup_routing(self, symbol: str, regime_val: str) -> Optional[dict]:
         """Case-insensitive routing lookup with symbol cleanup fallback."""
+        normalized_symbol = _normalize_symbol_lookup(symbol)
         candidates = [
             symbol,
             symbol.upper(),
@@ -381,6 +387,8 @@ class StrategyFactory:
             symbol.rstrip("cmCM."),
             symbol.rstrip("cmCM.").upper(),
             symbol.rstrip("cmCM.").lower(),
+            normalized_symbol,
+            normalized_symbol.lower(),
         ]
         regimes = [regime_val, str(regime_val).upper(), str(regime_val).lower()]
 
@@ -398,6 +406,8 @@ class StrategyFactory:
             except ValueError:
                 continue
             if sym_key.lower() == symbol_lower and reg_key.upper() == regime_upper:
+                return row
+            if _normalize_symbol_lookup(sym_key) == normalized_symbol and reg_key.upper() == regime_upper:
                 return row
         return None
 

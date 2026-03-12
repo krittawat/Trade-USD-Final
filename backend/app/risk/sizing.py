@@ -41,9 +41,9 @@ HARD_MAX_LOT_BROKER = {       # Absolute max broker lots per symbol (final safet
 HARD_MAX_LOT_DEFAULT = 0.02    # Fallback for unlisted symbols
 
 import json
-from pathlib import Path
+from backend.trader.config.paths import SETTINGS_PATH
 try:
-    with open(r"d:\VibeCode\Trade\backend\trader\config\settings.json") as _f:
+    with open(SETTINGS_PATH, "r", encoding="utf-8") as _f:
         _TIER_CFG = json.load(_f).get("tiered_scaling", {})
 except Exception as e:
     logger.error(f"Failed to load tiered_scaling config: {e}")

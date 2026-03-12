@@ -1,20 +1,20 @@
 {
     "risk_limits": {
         "max_risk_per_trade_percent": 0.5,
-        "max_daily_loss_percent": 10.0,
-        "max_daily_loss_currency": 12.0,
+        "max_daily_loss_percent": 30.0,
+        "max_daily_loss_currency": 50.0,
         "hard_risk_per_trade_pct": 0.3,
-        "hard_max_open_risk_pct": 1.0,
+        "hard_max_open_risk_pct": 12.0,
         "hard_margin_util_after_pct": 25.0,
         "hard_min_free_margin_pct": 70.0,
         "max_consecutive_losses": 3,
-        "daily_target_currency": 60.0,
-        "vault_target_currency": 18.0,
+        "daily_target_currency": 55.0,
+        "vault_target_currency": 17.5,
         "usd_to_thb_rate": 35.0,
         "max_spread_points": {
-            "XAUUSD": 1000,
+            "XAUUSD": 450,
             "XAGUSD": 1500,
-            "BTCUSD": 5000,
+            "BTCUSD": 4000,
             "USOIL": 300,
             "US30": 300,
             "USTEC": 500
@@ -38,7 +38,6 @@
             "US30": 1.0,
             "USTEC": 1.0
         },
-
         "min_volume_ratio": 0.8,
         "min_volume_ratio_hard": 0.4,
         "atr_deviation_cooldown_threshold": 2.2,
@@ -57,7 +56,6 @@
             "US30": 3,
             "USTEC": 3
         }
-
     },
     "hedge_enable": true,
     "hedge_threshold_dd_pct": 15.0,
@@ -98,14 +96,28 @@
         "lock_live_to_xau_only": false,
         "live_symbols_override": [
             "XAUUSD",
-            "BTCUSD",
-            "USOIL",
-            "US30",
-            "USTEC"
+            "BTCUSD"
         ],
-        "live_shadow_symbols_override": [
-            "XAGUSD"
+        "live_shadow_symbols_override": [],
+        "live_strategy_profile": "alpha_v7_ict",
+        "live_strategy_whitelist": [
+            "ALPHA_V7_ICT"
         ],
+        "live_force_models": [
+            "ALPHA_V7_ICT"
+        ],
+        "live_strategy_eval_mode": true,
+        "live_strategy_min_confidence": 0.72,
+        "live_pinned_symbol_timeframes": {
+            "XAUUSD": [
+                "M5",
+                "M15"
+            ],
+            "BTCUSD": [
+                "M5",
+                "M15"
+            ]
+        },
         "block_opposite_side_same_symbol_live": true,
         "backtest_tf_overrides": {
             "min_trades": 20,
@@ -115,23 +127,33 @@
             "search_completed_runs": 30,
             "require_positive_score": true,
             "require_positive_pnl": true,
-            "disabled_symbols": [
-                "XAUUSD",
-                "BTCUSD",
-                "USOIL",
-                "US30",
-                "USTEC"
-            ],
+            "disabled_symbols": [],
             "pinned_symbol_timeframes": {
-                "XAUUSD": ["M15", "H1"],
-                "BTCUSD": ["M15", "H1"],
-                "USOIL": ["M15", "H1"],
-                "US30": ["M15", "H1"],
-                "USTEC": ["M15", "H1"]
+                "XAUUSD": [
+                    "M5",
+                    "M15",
+                    "H1"
+                ],
+                "BTCUSD": [
+                    "M5",
+                    "M15",
+                    "H1"
+                ],
+                "USOIL": [
+                    "M15",
+                    "H1"
+                ],
+                "US30": [
+                    "M15",
+                    "H1"
+                ],
+                "USTEC": [
+                    "M15",
+                    "H1"
+                ]
             }
         }
     },
-
     "strategy": {
         "enable_trend_killer": false,
         "enable_liquidity_hunter": true,
@@ -144,9 +166,10 @@
         "enable_micro_scalper": false,
         "enable_antigravity_alpha": false,
         "enable_alpha_v6": true,
+        "enable_alpha_v7": true,
         "enable_gold_elite": true,
-        "enable_usoil_elite": false,
-        "enable_usoil_momentum": false,
+        "enable_usoil_elite": true,
+        "enable_usoil_momentum": true,
         "enable_smc_metals": true,
         "enable_ai_brain": true,
         "enable_momentum_scalper": false,
@@ -159,26 +182,88 @@
         "enable_fvg_logic": true,
         "enable_aether_flow": true,
         "enable_indicator_confluence": false,
-        "enable_indices_ultimate": false,
+        "enable_indices_ultimate": true,
         "min_confidence_trade": 0.75,
         "min_liquidity_event_score": 0.80,
         "tick_volume_gate": {
             "enabled": true,
             "entry_ratio_min": 1.15,
+            "large_volume_ratio_min": 1.35,
             "strong_ratio_min": 1.6,
+            "extreme_volume_ratio_min": 2.1,
             "opposite_block_ratio": 1.35,
             "climax_ratio": 2.8,
             "climax_max_body_ratio": 0.35,
             "min_directional_pressure": 0.57,
             "alignment_boost": 0.04,
+            "large_alignment_boost": 0.05,
             "strong_alignment_boost": 0.07,
+            "extreme_alignment_boost": 0.1,
             "counter_signal_penalty": 0.05,
             "low_volume_penalty": 0.06,
+            "require_large_volume_for_strict_models": true,
+            "block_neutral_large_volume": true,
             "allow_low_volume_models": [
                 "COUNTER_TREND",
                 "BTC_MEAN_REV"
             ],
-            "strict_entry_models": []
+            "strict_entry_models": [],
+            "symbol_overrides": {
+                "XAUUSD": {
+                    "large_volume_ratio_min": 1.35,
+                    "strong_ratio_min": 1.6,
+                    "extreme_volume_ratio_min": 2.1
+                },
+                "XAGUSD": {
+                    "large_volume_ratio_min": 1.3,
+                    "strong_ratio_min": 1.55,
+                    "extreme_volume_ratio_min": 2.0
+                },
+                "BTCUSD": {
+                    "entry_ratio_min": 1.2,
+                    "large_volume_ratio_min": 1.5,
+                    "strong_ratio_min": 1.85,
+                    "extreme_volume_ratio_min": 2.4,
+                    "large_alignment_boost": 0.06,
+                    "strong_alignment_boost": 0.08,
+                    "extreme_alignment_boost": 0.11
+                },
+                "USOIL": {
+                    "large_volume_ratio_min": 1.3,
+                    "strong_ratio_min": 1.55,
+                    "extreme_volume_ratio_min": 2.0
+                },
+                "US30": {
+                    "entry_ratio_min": 1.1,
+                    "large_volume_ratio_min": 1.25,
+                    "strong_ratio_min": 1.5,
+                    "extreme_volume_ratio_min": 1.9
+                },
+                "USTEC": {
+                    "entry_ratio_min": 1.1,
+                    "large_volume_ratio_min": 1.25,
+                    "strong_ratio_min": 1.5,
+                    "extreme_volume_ratio_min": 1.9
+                },
+                "EURUSD": {
+                    "entry_ratio_min": 1.05,
+                    "large_volume_ratio_min": 1.2,
+                    "strong_ratio_min": 1.4,
+                    "extreme_volume_ratio_min": 1.8
+                },
+                "GBPUSD": {
+                    "entry_ratio_min": 1.08,
+                    "large_volume_ratio_min": 1.22,
+                    "strong_ratio_min": 1.42,
+                    "extreme_volume_ratio_min": 1.82
+                },
+                "USDJPY": {
+                    "entry_ratio_min": 1.08,
+                    "large_volume_ratio_min": 1.22,
+                    "strong_ratio_min": 1.42,
+                    "extreme_volume_ratio_min": 1.82
+                }
+            }
         },
         "trade_cooldown_bars": 6,
         "sl_atr_multiplier": 1.2,
@@ -547,7 +632,7 @@
         "defensive_lot_reduction": 0.5,
         "risk_per_trade_pct": 0.5,
         "defensive_risk_pct": 0.25,
-        "daily_loss_limit_pct": 5.0,
+        "daily_loss_limit_pct": 30.0,
         "rr_minimum": 1.20,
         "consecutive_loss_cooldown_hours": 2,
         "atr_block_deviation": 2.5
@@ -606,7 +691,6 @@
                 "max_lot_XAGUSD": 0.04,
                 "max_lot_BTCUSD": 0.10,
                 "max_lot_USOILm": 0.05,
-
                 "max_lot_US30m": 0.02,
                 "max_lot_USTECm": 0.02
             }
@@ -632,5 +716,20 @@
                 "max_effective_leverage": 50
             }
         ]
+    },
+    "professional_engine": {
+        "max_open_risk_pct": 12.0,
+        "max_group_risk_pct": 5.0,
+        "max_slippage_points": {
+            "XAUUSD": 300.0,
+            "XAGUSD": 400.0,
+            "BTCUSD": 3000.0,
+            "USOIL": 200.0,
+            "US30": 1600.0,
+            "USTEC": 600.0,
+            "EURUSD": 100.0,
+            "GBPUSD": 60.0,
+            "USDJPY": 60.0
+        }
     }
 }

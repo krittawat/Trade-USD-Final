@@ -205,12 +205,17 @@ def signal_usoil_elite(df: pd.DataFrame, context: dict) -> dict:
     if sl_points > CONFIGS["max_sl_pts"]:
         sl_dist = CONFIGS["max_sl_pts"] * pt_val
 
+    # Adjust RR based on HTF alignment
+    current_rr = CONFIGS["min_rr"]
+    if (side == "BUY" and htf_align == "BULLISH") or (side == "SELL" and htf_align == "BEARISH"):
+        current_rr = 1.5  # Tighter target for faster vault-mode lock-ins
+
     if side == "BUY":
         sl = close - sl_dist
-        tp = close + (sl_dist * CONFIGS["min_rr"])
+        tp = close + (sl_dist * current_rr)
     else:
         sl = close + sl_dist
-        tp = close - (sl_dist * CONFIGS["min_rr"])
+        tp = close - (sl_dist * current_rr)
 
     return {
         "symbol": symbol,

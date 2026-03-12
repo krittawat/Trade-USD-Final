@@ -21,17 +21,24 @@ from backend.trader.config.paths import SETTINGS_PATH
 _DEFAULT_CFG = {
     "enabled": True,
     "entry_ratio_min": 1.15,
+    "large_volume_ratio_min": 1.35,
     "strong_ratio_min": 1.60,
+    "extreme_volume_ratio_min": 2.10,
     "opposite_block_ratio": 1.35,
     "climax_ratio": 2.80,
     "climax_max_body_ratio": 0.35,
     "min_directional_pressure": 0.57,
     "alignment_boost": 0.04,
+    "large_alignment_boost": 0.05,
     "strong_alignment_boost": 0.07,
+    "extreme_alignment_boost": 0.10,
     "counter_signal_penalty": 0.05,
     "low_volume_penalty": 0.06,
+    "require_large_volume_for_strict_models": True,
+    "block_neutral_large_volume": True,
     "allow_low_volume_models": ["COUNTER_TREND", "BTC_MEAN_REV"],
     "strict_entry_models": [],
+    "symbol_overrides": {},
 }
 
 
@@ -51,11 +58,19 @@ def _load_cfg() -> dict:
     cfg["strict_entry_models"] = [
         str(model).upper() for model in cfg.get("strict_entry_models", []) if str(model).strip()
     ]
+    normalized_overrides = {}
+    for raw_symbol, raw_cfg in (cfg.get("symbol_overrides", {}) or {}).items():
+        symbol_key = _normalize_symbol_key(raw_symbol)
+        if not symbol_key or not isinstance(raw_cfg, dict):
+            continue
+        merged = dict(cfg)
+        merged.update({k: v for k, v in raw_cfg.items() if v is not None})
+        merged["allow_low_volume_models"] = list(cfg.get("allow_low_volume_models", []))
+        merged["strict_entry_models"] = list(cfg.get("strict_entry_models", []))
+        merged["symbol_overrides"] = {}
+        normalized_overrides[symbol_key] = merged
+    cfg["symbol_overrides"] = normalized_overrides
     return cfg
-
-
-_CFG = _load_cfg()
-
 
 @dataclass
 class TickVolumeGateResult:
@@ -76,15 +91,71 @@ def _safe_float(value, fallback: float = 0.0) -> float:
         return fallback
 
 
-def _strict_model(model_name: str) -> bool:
+def _normalize_symbol_key(symbol: str) -> str:
+    raw = str(symbol or "").upper().rstrip("MC.")
+    if "XAU" in raw or "GOLD" in raw:
+        return "XAUUSD"
+    if "XAG" in raw or "SILVER" in raw:
+        return "XAGUSD"
+    if "BTC" in raw:
+        return "BTCUSD"
+    if "OIL" in raw:
+        return "USOIL"
+    if "30" in raw:
+        return "US30"
+    if "TEC" in raw or "NAS" in raw:
+        return "USTEC"
+    if "EURUSD" in raw:
+        return "EURUSD"
+    if "GBPUSD" in raw:
+        return "GBPUSD"
+    if "USDJPY" in raw:
+        return "USDJPY"
+    return raw
+
+
+def _resolve_cfg(signal: dict | None = None, context: dict | None = None) -> dict:
+    symbol = ""
+    if isinstance(signal, dict):
+        symbol = str(signal.get("symbol", "") or "")
+    if not symbol and isinstance(context, dict):
+        symbol = str(context.get("symbol", "") or "")
+
+    symbol_key = _normalize_symbol_key(symbol)
+    override = (_CFG.get("symbol_overrides", {}) or {}).get(symbol_key)
+    return override or _CFG
+
+
+_CFG = _load_cfg()
+
+
+def _strict_model(model_name: str, cfg: dict) -> bool:
     model = str(model_name or "").upper()
-    strict_models = _CFG.get("strict_entry_models", [])
+    strict_models = cfg.get("strict_entry_models", [])
     if strict_models:
         return model in strict_models
-    return model not in set(_CFG.get("allow_low_volume_models", []))
+    return model not in set(cfg.get("allow_low_volume_models", []))
 
 
-def summarize_latest_tick_volume(latest: pd.Series) -> dict:
+def _volume_size_tier(vol_ratio: float, cfg: dict) -> str:
+    entry_ratio = _safe_float(cfg.get("entry_ratio_min"), 1.15)
+    large_ratio = max(entry_ratio, _safe_float(cfg.get("large_volume_ratio_min"), 1.35))
+    strong_ratio = max(large_ratio, _safe_float(cfg.get("strong_ratio_min"), 1.60))
+    extreme_ratio = max(strong_ratio, _safe_float(cfg.get("extreme_volume_ratio_min"), 2.10))
+
+    if vol_ratio < entry_ratio:
+        return "LOW"
+    if vol_ratio < large_ratio:
+        return "NORMAL"
+    if vol_ratio < strong_ratio:
+        return "LARGE"
+    if vol_ratio < extreme_ratio:
+        return "STRONG"
+    return "EXTREME"
+
+
+def summarize_latest_tick_volume(latest: pd.Series, cfg: dict | None = None) -> dict:
+    cfg = cfg or _CFG
     close = _safe_float(latest.get("close"), 0.0)
     open_ = _safe_float(latest.get("open"), close)
     high = _safe_float(latest.get("high"), close)
@@ -113,7 +184,7 @@ def summarize_latest_tick_volume(latest: pd.Series) -> dict:
     delta = _safe_float(latest.get("vol_delta"), 0.0)
 
     directional_side = "NEUTRAL"
-    pressure_gate = _safe_float(_CFG.get("min_directional_pressure"), 0.57)
+    pressure_gate = _safe_float(cfg.get("min_directional_pressure"), 0.57)
     if buy_pressure >= pressure_gate and delta >= 0:
         directional_side = "BUY"
     elif sell_pressure >= pressure_gate and delta <= 0:
@@ -127,12 +198,13 @@ def summarize_latest_tick_volume(latest: pd.Series) -> dict:
     elif close < open_ and body_ratio >= 0.30:
         directional_side = "SELL"
 
-    climax_ratio = _safe_float(_CFG.get("climax_ratio"), 2.8)
-    climax_body = _safe_float(_CFG.get("climax_max_body_ratio"), 0.35)
+    climax_ratio = _safe_float(cfg.get("climax_ratio"), 2.8)
+    climax_body = _safe_float(cfg.get("climax_max_body_ratio"), 0.35)
     is_climax = bool(
         latest.get("volume_climax", False) or
         (vol_ratio >= climax_ratio and body_ratio <= climax_body)
     )
+    size_tier = _volume_size_tier(vol_ratio, cfg)
 
     return {
         "current_volume": current_volume,
@@ -144,17 +216,20 @@ def summarize_latest_tick_volume(latest: pd.Series) -> dict:
         "directional_side": directional_side,
         "delta": delta,
         "is_climax": is_climax,
+        "size_tier": size_tier,
+        "is_large_volume": size_tier in {"LARGE", "STRONG", "EXTREME"},
     }
 
 
 def evaluate_tick_volume(df: pd.DataFrame, signal: dict, context: dict | None = None) -> TickVolumeGateResult:
-    if not _CFG.get("enabled", True):
+    cfg = _resolve_cfg(signal, context)
+    if not cfg.get("enabled", True):
         return TickVolumeGateResult()
     if df is None or df.empty or not isinstance(signal, dict):
         return TickVolumeGateResult()
 
     latest = df.iloc[-1]
-    metrics = summarize_latest_tick_volume(latest)
+    metrics = summarize_latest_tick_volume(latest, cfg=cfg)
     side = str(signal.get("side", "")).upper()
     model = str(signal.get("model", "")).upper()
 
@@ -162,11 +237,19 @@ def evaluate_tick_volume(df: pd.DataFrame, signal: dict, context: dict | None = 
     vol_ratio = _safe_float(metrics.get("vol_ratio"), 1.0)
     body_ratio = _safe_float(metrics.get("body_ratio"), 0.0)
     directional_side = str(metrics.get("directional_side", "NEUTRAL")).upper()
+    size_tier = str(metrics.get("size_tier", "NORMAL")).upper()
     buy_pressure = _safe_float(metrics.get("buy_pressure"), 0.5)
     sell_pressure = _safe_float(metrics.get("sell_pressure"), 0.5)
+    pressure_floor = _safe_float(cfg.get("min_directional_pressure"), 0.57)
+    large_ratio = max(
+        _safe_float(cfg.get("entry_ratio_min"), 1.15),
+        _safe_float(cfg.get("large_volume_ratio_min"), 1.35),
+    )
+    strong_ratio = max(large_ratio, _safe_float(cfg.get("strong_ratio_min"), 1.60))
+    extreme_ratio = max(strong_ratio, _safe_float(cfg.get("extreme_volume_ratio_min"), 2.10))
 
     if side not in {"BUY", "SELL"}:
-        result.reason = f"TickVol neutral ({vol_ratio:.2f}x)"
+        result.reason = f"TickVol neutral ({vol_ratio:.2f}x, {size_tier})"
         return result
 
     if bool(metrics.get("is_climax", False)):
@@ -175,19 +258,29 @@ def evaluate_tick_volume(df: pd.DataFrame, signal: dict, context: dict | None = 
         result.reason = f"TickVol climax {vol_ratio:.2f}x with weak body {body_ratio:.2f}"
         return result
 
-    min_ratio = _safe_float(_CFG.get("entry_ratio_min"), 1.15)
+    min_ratio = _safe_float(cfg.get("entry_ratio_min"), 1.15)
     if vol_ratio < min_ratio:
-        if _strict_model(model):
+        if _strict_model(model, cfg):
             result.allowed = False
             result.state = "LOW_VOLUME_BLOCK"
             result.reason = f"TickVol {vol_ratio:.2f}x < entry gate {min_ratio:.2f}x"
             return result
-        result.confidence_delta = -_safe_float(_CFG.get("low_volume_penalty"), 0.06)
+        result.confidence_delta = -_safe_float(cfg.get("low_volume_penalty"), 0.06)
         result.state = "LOW_VOLUME_PENALTY"
         result.reason = f"TickVol soft {vol_ratio:.2f}x < {min_ratio:.2f}x"
         return result
 
-    opposite_block_ratio = _safe_float(_CFG.get("opposite_block_ratio"), 1.35)
+    if (
+        bool(cfg.get("require_large_volume_for_strict_models", True))
+        and _strict_model(model, cfg)
+        and vol_ratio < large_ratio
+    ):
+        result.allowed = False
+        result.state = "BELOW_LARGE_VOLUME"
+        result.reason = f"TickVol {vol_ratio:.2f}x < large-volume gate {large_ratio:.2f}x"
+        return result
+
+    opposite_block_ratio = _safe_float(cfg.get("opposite_block_ratio"), 1.35)
     if directional_side in {"BUY", "SELL"} and directional_side != side and vol_ratio >= opposite_block_ratio:
         result.allowed = False
         result.state = "COUNTER_PRESSURE"
@@ -195,24 +288,36 @@ def evaluate_tick_volume(df: pd.DataFrame, signal: dict, context: dict | None = 
         return result
 
     if directional_side == side:
-        strong_ratio = _safe_float(_CFG.get("strong_ratio_min"), 1.60)
         strong_pressure = max(buy_pressure, sell_pressure)
-        if vol_ratio >= strong_ratio and strong_pressure >= (_safe_float(_CFG.get("min_directional_pressure"), 0.57) + 0.08):
-            result.confidence_delta = _safe_float(_CFG.get("strong_alignment_boost"), 0.07)
+        if vol_ratio >= extreme_ratio and strong_pressure >= (pressure_floor + 0.10):
+            result.confidence_delta = _safe_float(cfg.get("extreme_alignment_boost"), 0.10)
+            result.state = "EXTREME_ALIGNMENT"
+            result.reason = f"TickVol extreme {side} {vol_ratio:.2f}x ({size_tier})"
+        elif vol_ratio >= strong_ratio and strong_pressure >= (pressure_floor + 0.08):
+            result.confidence_delta = _safe_float(cfg.get("strong_alignment_boost"), 0.07)
             result.state = "STRONG_ALIGNMENT"
-            result.reason = f"TickVol strong {side} {vol_ratio:.2f}x"
+            result.reason = f"TickVol strong {side} {vol_ratio:.2f}x ({size_tier})"
+        elif vol_ratio >= large_ratio:
+            result.confidence_delta = _safe_float(cfg.get("large_alignment_boost"), 0.05)
+            result.state = "LARGE_ALIGNMENT"
+            result.reason = f"TickVol large {side} {vol_ratio:.2f}x ({size_tier})"
         else:
-            result.confidence_delta = _safe_float(_CFG.get("alignment_boost"), 0.04)
+            result.confidence_delta = _safe_float(cfg.get("alignment_boost"), 0.04)
             result.state = "ALIGNED"
-            result.reason = f"TickVol confirms {side} {vol_ratio:.2f}x"
+            result.reason = f"TickVol confirms {side} {vol_ratio:.2f}x ({size_tier})"
         return result
 
     if directional_side == "NEUTRAL":
+        if bool(cfg.get("block_neutral_large_volume", True)) and _strict_model(model, cfg) and vol_ratio >= large_ratio:
+            result.allowed = False
+            result.state = "NEUTRAL_LARGE_VOLUME"
+            result.reason = f"TickVol large {vol_ratio:.2f}x but pressure is neutral"
+            return result
         result.state = "HIGH_VOLUME_NEUTRAL"
-        result.reason = f"TickVol high {vol_ratio:.2f}x but neutral pressure"
+        result.reason = f"TickVol high {vol_ratio:.2f}x but neutral pressure ({size_tier})"
         return result
 
-    result.confidence_delta = -_safe_float(_CFG.get("counter_signal_penalty"), 0.05)
+    result.confidence_delta = -_safe_float(cfg.get("counter_signal_penalty"), 0.05)
     result.state = "COUNTER_PRESSURE_PENALTY"
-    result.reason = f"TickVol leaning {directional_side} ({vol_ratio:.2f}x)"
+    result.reason = f"TickVol leaning {directional_side} ({vol_ratio:.2f}x, {size_tier})"
     return result

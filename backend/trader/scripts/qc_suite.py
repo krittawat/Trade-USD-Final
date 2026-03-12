@@ -249,8 +249,125 @@ def test_tick_volume_gate_alignment():
         "tp1": float(df.iloc[-1]["close"] + 10.0),
     }
     result = evaluate_tick_volume(df, signal, {})
-    ok = result.allowed and result.confidence_delta > 0 and result.state in {"ALIGNED", "STRONG_ALIGNMENT"}
+    ok = result.allowed and result.confidence_delta > 0 and result.state in {
+        "ALIGNED", "LARGE_ALIGNMENT", "STRONG_ALIGNMENT", "EXTREME_ALIGNMENT"
+    }
     return ok, f"allowed={result.allowed}, delta={result.confidence_delta:.2f}, state={result.state}, reason={result.reason}"
+
+def test_tick_volume_gate_blocks_small_for_strict_model():
+    from backend.trader.features.volatility import add_volatility_features
+    from backend.trader.strategy.tick_volume_gate import evaluate_tick_volume
+
+    df = add_volatility_features(_make_test_df(120))
+    idx = df.index[-1]
+    base_avg = float(df["tick_volume"].iloc[-41:-1].mean())
+    df.loc[idx, "open"] = float(df.loc[idx, "close"]) - 0.6
+    df.loc[idx, "high"] = float(df.loc[idx, "close"]) + 0.4
+    df.loc[idx, "low"] = float(df.loc[idx, "open"]) - 0.2
+    df.loc[idx, "close"] = float(df.loc[idx, "open"]) + 0.8
+    df.loc[idx, "tick_volume"] = int(max(100.0, base_avg * 1.22))
+    df = add_volatility_features(df)
+
+    signal = {
+        "symbol": "XAUUSD",
+        "side": "BUY",
+        "model": "RAPID_PULLBACK",
+        "entry_price": float(df.iloc[-1]["close"]),
+        "sl": float(df.iloc[-1]["close"] - 5.0),
+        "tp1": float(df.iloc[-1]["close"] + 10.0),
+    }
+    result = evaluate_tick_volume(df, signal, {})
+    blocked = (not result.allowed) and result.state == "BELOW_LARGE_VOLUME"
+    return blocked, f"allowed={result.allowed}, state={result.state}, reason={result.reason}"
+
+def test_risk_gate_blocks_small_tick_volume_size():
+    from backend.trader.risk.gate import RiskEngine
+    engine = RiskEngine()
+    sig = {"symbol": "XAUUSD", "side": "BUY", "sl": 1990.0, "model": "RAPID_PULLBACK"}
+    result = engine.risk_gate(
+        sig,
+        {"equity": 1000, "daily_pnl": 0, "consecutive_losses": 0, "balance": 1000, "margin": 0, "margin_free": 1000},
+        {
+            "spread": 10,
+            "is_news": False,
+            "backtest_mode": True,
+            "vol_ratio": 1.2,
+            "tick_vol_ratio": 1.2,
+            "tick_volume_side": "BUY",
+            "tick_volume_climax": False,
+        }
+    )
+    blocked = (not result["allowed"]) and any("large-volume gate" in r for r in result["reasons"])
+    return blocked, f"allowed={result['allowed']} reasons={result['reasons']}"
+
+def test_tick_volume_symbol_override_for_btc():
+    from backend.trader.features.volatility import add_volatility_features
+    from backend.trader.strategy.tick_volume_gate import evaluate_tick_volume
+
+    df = add_volatility_features(_make_test_df(120))
+    idx = df.index[-1]
+    base_avg = float(df["tick_volume"].iloc[-41:-1].mean())
+    df.loc[idx, "open"] = float(df.loc[idx, "close"]) - 0.8
+    df.loc[idx, "high"] = float(df.loc[idx, "close"]) + 0.3
+    df.loc[idx, "low"] = float(df.loc[idx, "open"]) - 0.2
+    df.loc[idx, "close"] = float(df.loc[idx, "open"]) + 1.0
+    df.loc[idx, "tick_volume"] = int(max(100.0, base_avg * 1.40))
+    df = add_volatility_features(df)
+
+    signal = {
+        "symbol": "BTCUSD",
+        "side": "BUY",
+        "model": "RAPID_PULLBACK",
+        "entry_price": float(df.iloc[-1]["close"]),
+        "sl": float(df.iloc[-1]["close"] - 5.0),
+        "tp1": float(df.iloc[-1]["close"] + 10.0),
+    }
+    result = evaluate_tick_volume(df, signal, {"symbol": "BTCUSD"})
+    blocked = (not result.allowed) and result.state == "BELOW_LARGE_VOLUME"
+    return blocked, f"allowed={result.allowed}, state={result.state}, reason={result.reason}"
+
+def test_risk_gate_symbol_override_for_btc():
+    from backend.trader.risk.gate import RiskEngine
+    engine = RiskEngine()
+    sig = {"symbol": "BTCUSD", "side": "BUY", "sl": 90000.0, "model": "RAPID_PULLBACK"}
+    result = engine.risk_gate(
+        sig,
+        {"equity": 1000, "daily_pnl": 0, "consecutive_losses": 0, "balance": 1000, "margin": 0, "margin_free": 1000},
+        {
+            "spread": 10,
+            "is_news": False,
+            "backtest_mode": True,
+            "vol_ratio": 1.4,
+            "tick_vol_ratio": 1.4,
+            "tick_volume_side": "BUY",
+            "tick_volume_climax": False,
+        }
+    )
+    blocked = (not result["allowed"]) and any("1.50x" in r for r in result["reasons"])
+    return blocked, f"allowed={result['allowed']} reasons={result['reasons']}"
+
+def test_alpha_v7_live_smoke():
+    from backend.trader.strategy.alpha_v7_ict_live import signal_alpha_v7_ict
+
+    df = _make_test_df(260)
+    ctx = {"symbol": "XAUUSD", "timeframe": "M5", "session": "LONDON"}
+    sig = signal_alpha_v7_ict(df, ctx)
+    if sig is None:
+        return True, "Alpha V7 ICT returned no-trade on synthetic feed"
+
+    required = ["symbol", "side", "entry_price", "sl", "tp1", "model", "confidence"]
+    missing = [key for key in required if key not in sig]
+    return len(missing) == 0, f"missing={missing}" if missing else f"{sig['side']} {sig['model']} conf={sig['confidence']:.2f}"
+
+def test_alpha_v7_backtest_preset():
+    from backend.trader.scripts.run_backtest import STRATEGY_PRESETS
+
+    preset = STRATEGY_PRESETS.get("alpha_v7_ict", {})
+    ok = (
+        preset.get("whitelist") == ["ALPHA_V7_ICT"] and
+        preset.get("force_enabled_models") == ["ALPHA_V7_ICT"]
+    )
+    return ok, f"preset={preset}"
 
 # ═══════════════════════════════════════════════════════════
 # 7. SQLITE STORAGE
@@ -546,10 +663,16 @@ def main():
     check("Blocks during news window", test_risk_gate_blocks_news)
     check("Allows valid signal", test_risk_gate_allows_valid)
     check("Blocks opposing tick-volume pressure", test_risk_gate_blocks_tick_volume_mismatch)
+    check("Blocks weak tick-volume size", test_risk_gate_blocks_small_tick_volume_size)
+    check("Risk gate symbol override for BTC", test_risk_gate_symbol_override_for_btc)
 
     print("\n[6/9] Strategy Pipeline")
     check("Full pipeline signal generation", test_strategy_selector)
     check("Tick volume gate aligns high-volume entries", test_tick_volume_gate_alignment)
+    check("Tick volume gate blocks sub-large strict entries", test_tick_volume_gate_blocks_small_for_strict_model)
+    check("Tick volume symbol override for BTC", test_tick_volume_symbol_override_for_btc)
+    check("Alpha V7 ICT live smoke", test_alpha_v7_live_smoke)
+    check("Alpha V7 ICT backtest preset", test_alpha_v7_backtest_preset)
 
     print("\n[7/9] SQLite Storage")
     check("SQLite CRUD operations", test_sqlite_storage)

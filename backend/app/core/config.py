@@ -15,6 +15,10 @@ from pydantic_settings import BaseSettings
 from pydantic import Field, field_validator
 
 
+def _project_root() -> Path:
+    return Path(__file__).resolve().parents[3]
+
+
 def _resolve_env_file() -> str:
     """
     Resolve which .env file to load based on TRADING_PROFILE env var.
@@ -23,7 +27,7 @@ def _resolve_env_file() -> str:
         1. TRADING_PROFILE=cent_small → profiles/cent_small.env
         2. Fallback → .env (root)
     """
-    project_root = Path(__file__).resolve().parents[3]
+    project_root = _project_root()
     profile = os.environ.get("TRADING_PROFILE", "").strip()
     
     if profile:
@@ -89,6 +93,16 @@ class Settings(BaseSettings):
 
     # --- DuckDB ---
     duckdb_db_path: str = Field(default=str(Path(__file__).resolve().parents[2] / "data" / "duckdb" / "analytics.duckdb"))
+
+    @field_validator("sqlite_db_path", "duckdb_db_path", mode="before")
+    @classmethod
+    def resolve_storage_paths(cls, v: str) -> str:
+        if not isinstance(v, str) or not v.strip():
+            return v
+        path = Path(v.strip())
+        if path.is_absolute():
+            return str(path)
+        return str((_project_root() / path).resolve())
 
     # --- Risk Engine (hard limits) ---
     max_risk_per_trade_pct: float = Field(default=2.0, ge=0.1, le=20.0)

@@ -27,7 +27,6 @@ from backend.trader.risk.mt5_history import (
     combined_realized_and_floating_pnl,
     get_closed_trade_summary,
     is_currency_loss_breached,
-    remaining_additional_loss_budget,
     utc_day_start,
     utc_now,
 )
@@ -47,18 +46,19 @@ from backend.trader.data.time_utils import time_utils
 from backend.trader.services.maintenance import MaintenanceScheduler
 from backend.trader.services.live_cycle import handle_safety_pause, run_live_position_management
 from backend.trader.brain.brain_bridge import brain_bridge
-from backend.trader.risk.sizing import sizer  # [NEW] Dynamic Sizing Engine
+from backend.trader.engine import ProfessionalTradingEngine
 
 
 logger = logging.getLogger("opus_logger")
+trading_engine = ProfessionalTradingEngine(db_store=db, logger=logger)
 
 import json as _json
 with open(SETTINGS_PATH, encoding="utf-8") as _f:
     _SETTINGS = _json.load(_f)
 
 CONFIG = {
-    # Focus universe for production growth: keep XAG in shadow until equity is above $400.
-    "symbols": ["XAUUSDm", "BTCUSDm", "USOILm", "US30m", "USTECm"],
+    # Expanded universe for 9-symbol production execution
+    "symbols": ["XAUUSDm", "BTCUSDm", "USOILm", "US30m", "USTECm", "EURUSDm", "GBPUSDm", "USDJPYm"],
     "shadow_symbols": ["XAGUSDm"],
     "timeframes": ["M3", "M5", "M6", "M12", "M15", "M30", "H1", "H2", "H4", "D1"],
     "symbol_timeframes": {
@@ -67,7 +67,10 @@ CONFIG = {
         "XAUUSDm": ["M3", "M5", "M6", "M12", "M15", "M30", "H1", "H2", "H4", "D1"],
         "XAGUSDm": ["M3", "M5", "M6", "M12", "M15", "M30", "H1", "H2", "H4", "D1"],
         "US30m": ["M3", "M5", "M6", "M12", "M15", "M30", "H1", "H2", "H4", "D1"],
-        "USTECm": ["M3", "M5", "M6", "M12", "M15", "M30", "H1", "H2", "H4", "D1"]
+        "USTECm": ["M3", "M5", "M6", "M12", "M15", "M30", "H1", "H2", "H4", "D1"],
+        "EURUSDm": ["M3", "M5", "M6", "M12", "M15", "M30", "H1", "H2", "H4", "D1"],
+        "GBPUSDm": ["M3", "M5", "M6", "M12", "M15", "M30", "H1", "H2", "H4", "D1"],
+        "USDJPYm": ["M3", "M5", "M6", "M12", "M15", "M30", "H1", "H2", "H4", "D1"]
     },
     # Entry TF per asset to reduce noise/over-trading.
     "execution_timeframes": {
@@ -76,7 +79,10 @@ CONFIG = {
         "BTCUSDm": ["M5", "M15", "H1"],
         "USOILm": ["M5", "M15", "H1"],
         "US30m": ["M5", "M15", "H1"],
-        "USTECm": ["M5", "M15", "H1"]
+        "USTECm": ["M5", "M15", "H1"],
+        "EURUSDm": ["M5", "M15", "H1"],
+        "GBPUSDm": ["M5", "M15", "H1"],
+        "USDJPYm": ["M5", "M15", "H1"]
     },
     "safety_cap": {
         "equity_threshold": 120.0,
@@ -87,6 +93,7 @@ DEFAULT_SYMBOLS = deepcopy(CONFIG.get("symbols", []))
 DEFAULT_SHADOW_SYMBOLS = deepcopy(CONFIG.get("shadow_symbols", []))
 DEFAULT_SYMBOL_TIMEFRAMES = deepcopy(CONFIG.get("symbol_timeframes", {}))
 DEFAULT_EXECUTION_TIMEFRAMES = deepcopy(CONFIG.get("execution_timeframes", {}))
+RUNTIME_STRATEGY_OVERRIDES = {}
 
 
 
@@ -242,6 +249,31 @@ def _filter_tf_map(tf_map: dict, symbols: list) -> dict:
     return {k: deepcopy(v) for k, v in tf_map.items() if k in wanted}
 
 
+def _normalize_tf_tokens(raw_timeframes) -> list[str]:
+    out = []
+    seen = set()
+    for tf in raw_timeframes or []:
+        token = str(tf or "").strip().upper()
+        if not token or token in seen:
+            continue
+        seen.add(token)
+        out.append(token)
+    return out
+
+
+def _normalize_symbol_tf_override_map(raw_map) -> dict[str, list[str]]:
+    if not isinstance(raw_map, dict):
+        return {}
+
+    normalized = {}
+    for raw_symbol, raw_timeframes in raw_map.items():
+        broker_symbol = _resolve_broker_symbol_name(raw_symbol)
+        timeframes = _normalize_tf_tokens(raw_timeframes)
+        if broker_symbol and timeframes:
+            normalized[broker_symbol] = timeframes
+    return normalized
+
+
 def _apply_runtime_live_symbol_overrides(mode: str) -> None:
     if str(mode).lower() != "live":
         return
@@ -250,6 +282,7 @@ def _apply_runtime_live_symbol_overrides(mode: str) -> None:
     lock_xau_only = bool(runtime_cfg.get("lock_live_to_xau_only", False))
     live_symbols_override = _normalize_symbol_list(runtime_cfg.get("live_symbols_override", []))
     live_shadow_override = runtime_cfg.get("live_shadow_symbols_override")
+    live_tf_overrides = _normalize_symbol_tf_override_map(runtime_cfg.get("live_pinned_symbol_timeframes", {}))
 
     selected_symbols = []
     if lock_xau_only:
@@ -273,8 +306,56 @@ def _apply_runtime_live_symbol_overrides(mode: str) -> None:
     elif lock_xau_only:
         CONFIG["shadow_symbols"] = []
 
+    if live_tf_overrides:
+        active_symbols = set(CONFIG["symbols"]) | set(CONFIG.get("shadow_symbols", []))
+        for broker_symbol, timeframes in live_tf_overrides.items():
+            CONFIG["symbol_timeframes"][broker_symbol] = list(timeframes)
+            CONFIG["execution_timeframes"][broker_symbol] = list(timeframes)
+            status = "ACTIVE" if broker_symbol in active_symbols else "INACTIVE"
+            logger.warning(
+                f"🧭 [RUNTIME] LIVE TF pins [{status}] {broker_symbol} -> {','.join(timeframes)}"
+            )
+
     if lock_xau_only:
         logger.warning("🧭 [RUNTIME] lock_live_to_xau_only=true -> trade XAUUSD only")
+
+
+def _normalize_model_list(raw_models) -> list[str]:
+    out = []
+    seen = set()
+    for item in raw_models or []:
+        token = str(item or "").strip().upper()
+        if not token or token in seen:
+            continue
+        seen.add(token)
+        out.append(token)
+    return out
+
+
+def _resolve_runtime_strategy_overrides(mode: str) -> dict:
+    if str(mode).lower() not in {"live", "dry_run"}:
+        return {}
+
+    runtime_cfg = (_SETTINGS.get("runtime", {}) or {})
+    profile = str(runtime_cfg.get("live_strategy_profile", "") or "").strip().lower()
+    whitelist = _normalize_model_list(runtime_cfg.get("live_strategy_whitelist", []))
+    forced = _normalize_model_list(runtime_cfg.get("live_force_models", []))
+
+    overrides = {}
+    if profile:
+        overrides["strategy_profile"] = profile
+        overrides["live_strategy_profile"] = profile
+    if whitelist:
+        overrides["strategy_whitelist"] = list(whitelist)
+    if forced:
+        overrides["force_enabled_models"] = list(forced)
+    if runtime_cfg.get("live_strategy_eval_mode", False):
+        overrides["strategy_eval_mode"] = True
+        overrides["strategy_eval_min_confidence"] = float(runtime_cfg.get("live_strategy_min_confidence", 0.68) or 0.68)
+    elif runtime_cfg.get("live_strategy_min_confidence") is not None:
+        overrides["strategy_eval_min_confidence"] = float(runtime_cfg.get("live_strategy_min_confidence", 0.68) or 0.68)
+
+    return overrides
 
 
 def _resolve_override_toggle(args) -> bool:
@@ -481,10 +562,20 @@ def get_real_market_state(mt5_module, broker_symbol: str) -> dict:
     tick = mt5_module.symbol_info_tick(broker_symbol)
     sym_info = mt5_module.symbol_info(broker_symbol)
     if tick is None or sym_info is None:
-        return {"spread": 9999, "is_news": False, "tick_value": 1.0, "tick_size": 0.01, "volume_min": 0.01, "volume_max": 200.0, "volume_step": 0.01}
+        return {
+            "spread": 9999,
+            "is_news": False,
+            "tick_value": 1.0,
+            "tick_size": 0.01,
+            "point": 0.01,
+            "volume_min": 0.01,
+            "volume_max": 200.0,
+            "volume_step": 0.01,
+        }
     return {
         "spread": sym_info.spread, "bid": tick.bid, "ask": tick.ask, "is_news": False,
         "tick_value": sym_info.trade_tick_value or 1.0, "tick_size": sym_info.trade_tick_size or 0.01,
+        "point": sym_info.point or sym_info.trade_tick_size or 0.01,
         "contract_size": sym_info.trade_contract_size or 100.0, "volume_min": sym_info.volume_min or 0.01,
         "volume_max": sym_info.volume_max or 200.0, "volume_step": sym_info.volume_step or 0.01,
     }
@@ -894,6 +985,7 @@ def tick_cycle(mode: str, symbol: str, timeframe_str: str, executor: Executor, c
 
         # [NEW] Pre-fetch account state to check Governor BEFORE high-CPU feature calc
         acct = get_real_account_state(mt5)
+        trading_engine.observe_account_state(acct)
         # Apply Session Reset logic if active
         if "--reset-pnl" in sys.argv:
             session_summary = get_closed_trade_summary(mt5, SESSION_START_TIME)
@@ -977,6 +1069,8 @@ def tick_cycle(mode: str, symbol: str, timeframe_str: str, executor: Executor, c
             "session": session_label,
             "current_session": session_label,
         }
+        if RUNTIME_STRATEGY_OVERRIDES:
+            context.update(RUNTIME_STRATEGY_OVERRIDES)
         signal = select_and_generate_signal(work_df, context, events, current_bar=current_bar)
 
         # 🥈 [INSTITUTIONAL] XAG Follower Logic: If no signal but XAU recently fired
@@ -1047,208 +1141,58 @@ def tick_cycle(mode: str, symbol: str, timeframe_str: str, executor: Executor, c
             logger.debug(f"  🚫 BLOCKED: {symbol} at max positions ({pos_count}/{max_pos})")
             return
 
-        # Calculate session-based losses for the gate
-        session_acct = get_real_account_state(mt5, start_time=SESSION_START_TIME)
-        gate_res = risk_engine.risk_gate(
-            signal,
-            acct,
-            market_state,
-            opus_status=opus_status,
-            current_session=time_utils.assign_session(datetime.now(timezone.utc)),
-            session_consecutive_losses=session_acct['consecutive_losses']
+        signal_timestamp = None
+        try:
+            if "bar_ts" in locals() and not pd.isna(bar_ts):
+                signal_timestamp = bar_ts.to_pydatetime()
+        except Exception:
+            signal_timestamp = None
+
+        engine_result = trading_engine.process_signal(
+            raw_signal=signal,
+            symbol=symbol,
+            timeframe=timeframe_str,
+            session=session_label,
+            market_state=market_state,
+            account_state=acct,
+            executor=executor,
+            mode=mode,
+            mt5_module=mt5,
+            atr=signal_atr,
+            timestamp=signal_timestamp,
         )
-        if gate_res['allowed']:
-            # ─── Dynamic Sizing (Fractional Kelly) ──────────
-            strategy_name = signal.get('model', signal.get('strategy', 'unknown'))
-            regime = regime_res.get('regime', 'ALL')
 
-            # Get Alpha-Specific Dynamic Risk % (including FOMO penalty)
-            fomo_mult = signal.get('fomo_mult', 1.0)
-            dynamic_risk_pct = sizer.get_dynamic_risk(strategy_name, symbol, regime, fomo_penalty=fomo_mult)
-
-            # Apply Governor Multiplier (Vault/Defensive)
-            mult = opus_status.lot_multiplier
-            effective_risk = dynamic_risk_pct * mult
-
-            # Final Lot Calculation
-            raw_lot = compute_lot_size(
+        if engine_result.status in {"executed", "simulated"} and engine_result.plan is not None:
+            notify_trade_signal(
+                signal,
                 acct['equity'],
-                effective_risk,
-                abs(signal['entry_price'] - signal['sl']),
-                tick_value=market_state['tick_value'],
-                tick_size=market_state['tick_size'],
-                volume_min=market_state['volume_min'],
-                volume_step=market_state['volume_step']
+                acct['daily_pnl'],
+                lot=engine_result.plan.lot_size,
+                vol_warning=False,
             )
 
-            volume_min = _safe_float(market_state.get("volume_min", 0.01), 0.01)
-            volume_step = _safe_float(market_state.get("volume_step", 0.01), 0.01)
-            volume_max = _safe_float(market_state.get("volume_max", 200.0), 200.0)
-            lot = max(volume_min, round(raw_lot, 2))
-            lot = min(volume_max, max(volume_min, _round_down_to_step(lot, volume_step)))
-
-            # ─── Safety Cap (Scalable Growth) ──────────
-            safety = CONFIG.get("safety_cap", {"equity_threshold": 300.0, "max_lot": 0.01})
-            if acct['equity'] < safety["equity_threshold"]:
-                if lot > safety["max_lot"]:
-                    logger.info(f"🛡️ [SAFETY] Equity ${acct['equity']:.2f} < ${safety['equity_threshold']}: capping lot {lot} -> {safety['max_lot']}")
-                    lot = safety["max_lot"]
-
-            if mult < 1.0:
-                logger.info(f"🛡️ [GOVERNOR] Mult x{mult:.1f} Active (Risk: {dynamic_risk_pct}% -> {effective_risk:.2f}%)")
-
-            if gate_res.get("vol_warning"):
-                lot = max(market_state['volume_min'], round(lot * 0.5, 2))
-                logger.warning(f"⚠️ [VOL] Warning Active - Reducing lot by 50% -> {lot}")
-
-            # ─── Hard Equity-Based Capital Protection (non-bypass) ───
-            risk_cfg = (_SETTINGS.get("risk_limits", {}) or {})
-            hard_trade_risk_pct = max(
-                0.01,
-                _safe_float(
-                    risk_cfg.get("hard_risk_per_trade_pct", risk_cfg.get("max_risk_per_trade_percent", 0.5)),
-                    0.5,
-                ),
-            )
-            hard_open_risk_pct = max(0.05, _safe_float(risk_cfg.get("hard_max_open_risk_pct", 1.2), 1.2))
-            hard_margin_util_after_pct = max(5.0, _safe_float(risk_cfg.get("hard_margin_util_after_pct", 30.0), 30.0))
-            hard_min_free_margin_pct = max(5.0, _safe_float(risk_cfg.get("hard_min_free_margin_pct", 65.0), 65.0))
-
-            entry_px = _safe_float(signal.get("entry_price"), 0.0)
-            sl_px = _safe_float(signal.get("sl"), 0.0)
-            tick_value = _safe_float(market_state.get("tick_value"), 0.0)
-            tick_size = _safe_float(market_state.get("tick_size"), 0.0)
-            risk_per_lot_usd = _estimate_order_risk_usd(
-                entry=entry_px,
-                sl=sl_px,
-                lot=1.0,
-                tick_value=tick_value,
-                tick_size=tick_size,
-            )
-            if risk_per_lot_usd <= 0:
-                logger.warning(f"  🚫 BLOCKED: invalid risk model for {symbol} (tick/sl data invalid)")
-                return
-
-            max_trade_risk_usd = max(0.0, acct['equity'] * (hard_trade_risk_pct / 100.0))
-            max_lot_by_trade_risk = _round_down_to_step(max_trade_risk_usd / risk_per_lot_usd, volume_step)
-            if max_lot_by_trade_risk < volume_min:
-                logger.warning(
-                    f"  🚫 BLOCKED: {symbol} min lot {volume_min:.2f} exceeds per-trade risk cap "
-                    f"${max_trade_risk_usd:.2f} ({hard_trade_risk_pct:.2f}% of equity)"
-                )
-                return
-            if lot > max_lot_by_trade_risk:
-                logger.info(
-                    f"🛡️ [RISK CAP] Per-trade cap {symbol}: lot {lot:.2f} -> {max_lot_by_trade_risk:.2f} "
-                    f"(budget ${max_trade_risk_usd:.2f})"
-                )
-                lot = max_lot_by_trade_risk
-
-            open_risk_usd = _estimate_open_portfolio_risk_usd(mt5)
-            max_open_risk_usd = max(0.0, acct['equity'] * (hard_open_risk_pct / 100.0))
-            candidate_risk_usd = risk_per_lot_usd * lot
-            if open_risk_usd + candidate_risk_usd > max_open_risk_usd:
-                remaining_risk_usd = max(0.0, max_open_risk_usd - open_risk_usd)
-                max_lot_by_open_risk = _round_down_to_step(remaining_risk_usd / risk_per_lot_usd, volume_step)
-                if max_lot_by_open_risk < volume_min:
-                    logger.warning(
-                        f"  🚫 BLOCKED: open-risk budget exhausted "
-                        f"(open=${open_risk_usd:.2f}, cap=${max_open_risk_usd:.2f})"
-                    )
-                    return
-                if max_lot_by_open_risk < lot:
-                    logger.info(
-                        f"🛡️ [PORTFOLIO RISK CAP] lot {lot:.2f} -> {max_lot_by_open_risk:.2f} "
-                        f"(open ${open_risk_usd:.2f} / cap ${max_open_risk_usd:.2f})"
-                    )
-                    lot = max_lot_by_open_risk
-                    candidate_risk_usd = risk_per_lot_usd * lot
-
-            loss_limit_currency = _SETTINGS.get("risk_limits", {}).get("max_daily_loss_currency", 14.0)
-            remaining_loss_budget_usd = remaining_additional_loss_budget(
-                acct.get("daily_pnl", 0.0),
-                loss_limit_currency,
-            )
-            if math.isfinite(remaining_loss_budget_usd):
-                available_loss_budget_usd = max(0.0, remaining_loss_budget_usd - open_risk_usd)
-                if available_loss_budget_usd <= 0:
-                    logger.warning(
-                        f"  🚫 BLOCKED: daily loss budget exhausted "
-                        f"(PnL=${acct.get('daily_pnl', 0.0):+.2f}, open-risk=${open_risk_usd:.2f}, "
-                        f"limit=${abs(float(loss_limit_currency or 0.0)):.2f})"
-                    )
-                    return
-                max_lot_by_loss_budget = _round_down_to_step(available_loss_budget_usd / risk_per_lot_usd, volume_step)
-                if max_lot_by_loss_budget < volume_min:
-                    logger.warning(
-                        f"  🚫 BLOCKED: {symbol} would exceed remaining daily loss budget "
-                        f"(available=${available_loss_budget_usd:.2f}, risk/lot=${risk_per_lot_usd:.2f})"
-                    )
-                    return
-                if max_lot_by_loss_budget < lot:
-                    logger.info(
-                        f"🛡️ [DAILY LOSS CAP] lot {lot:.2f} -> {max_lot_by_loss_budget:.2f} "
-                        f"(open-risk ${open_risk_usd:.2f}, remaining budget ${remaining_loss_budget_usd:.2f})"
-                    )
-                    lot = max_lot_by_loss_budget
-                    candidate_risk_usd = risk_per_lot_usd * lot
-
-            margin_req = mt5.order_calc_margin(
-                mt5.ORDER_TYPE_BUY if signal['side'] == 'BUY' else mt5.ORDER_TYPE_SELL,
-                broker_symbol,
-                lot,
-                signal['entry_price']
-            )
-            if margin_req is None:
-                logger.warning(f"  🚫 BLOCKED: margin calculation failed for {symbol} (lot={lot})")
-                return
-
-            utilization_after = ((acct.get('margin', 0) + margin_req) / max(acct['equity'], 1)) * 100
-            free_margin_after = acct.get('margin_free', 0.0) - margin_req
-            free_margin_after_pct = (free_margin_after / max(acct['equity'], 1.0)) * 100.0
-            logger.info(
-                f"🛡️ [AUDIT] Risk open=${open_risk_usd:.2f} + new=${candidate_risk_usd:.2f} "
-                f"(cap=${max_open_risk_usd:.2f}) | Margin Req=${margin_req:.2f} "
-                f"| Util~{utilization_after:.1f}% | FreeAfter~{free_margin_after_pct:.1f}%"
-            )
-
-            if utilization_after > hard_margin_util_after_pct:
-                logger.warning(
-                    f"  🚫 BLOCKED: est margin utilization {utilization_after:.1f}% "
-                    f"> hard cap {hard_margin_util_after_pct:.1f}%"
-                )
-                return
-            if free_margin_after_pct < hard_min_free_margin_pct:
-                logger.warning(
-                    f"  🚫 BLOCKED: free margin after trade {free_margin_after_pct:.1f}% "
-                    f"< hard minimum {hard_min_free_margin_pct:.1f}%"
-                )
-                return
-
-            # Ensure margin_req is affordable
-            if margin_req <= acct['margin_free'] * 0.3:
-                order_result = executor.place_order(signal, lot_size=lot)
-                if isinstance(order_result, dict) and order_result.get("status") == "ok":
-                    notify_trade_signal(signal, acct['equity'], acct['daily_pnl'], lot=lot, vol_warning=gate_res.get("vol_warning"))
-
-                    # 🥈 [INSTITUTIONAL] XAU Signal Success Cache
-                    if symbol == "XAUUSDm":
-                        _LAST_XAU_SIGNAL["XAUUSDm"] = {
-                            "side": signal['side'],
-                            "time": datetime.now(timezone.utc),
-                            "model": signal.get('model', 'UNKNOWN'),
-                            "confidence": signal.get("confidence", 0.8),
-                        }
-                        logger.info("🥇 [CACHE] XAU signal saved for XAG follower")
-                else:
-                    err = mt5.last_error()
-                    logger.error(f"❌ [MT5 ERROR] Order failed for {symbol}: {err} | executor={order_result}")
-            else:
-                logger.warning(f"  🚫 BLOCKED: margin_req ${margin_req:.2f} exceeds 30% of free margin ${acct['margin_free']:.2f}")
-        else:
-            block_msg = f"  🚫 {C.RED}BLOCKED{C.RST}: {gate_res['reasons']}"
+            if symbol == "XAUUSDm":
+                _LAST_XAU_SIGNAL["XAUUSDm"] = {
+                    "side": signal['side'],
+                    "time": datetime.now(timezone.utc),
+                    "model": signal.get('model', 'UNKNOWN'),
+                    "confidence": signal.get("confidence", 0.8),
+                }
+                logger.info("🥇 [CACHE] XAU signal saved for XAG follower")
+        elif engine_result.status == "blocked":
+            block_msg = f"  🚫 {C.RED}BLOCKED{C.RST}: {engine_result.blocked_reasons}"
             logger.info(block_msg)
-            notify_trade_signal(signal, acct['equity'], acct['daily_pnl'], blocked=True, block_reasons=gate_res['reasons'])
+            notify_trade_signal(
+                signal,
+                acct['equity'],
+                acct['daily_pnl'],
+                blocked=True,
+                block_reasons=engine_result.blocked_reasons,
+            )
+        elif engine_result.status == "error":
+            logger.error(
+                f"❌ [ENGINE] Order failed for {symbol}: {engine_result.reason or 'unknown execution error'}"
+            )
     except Exception as e:
         logger.error(f"{_sym(symbol)} ❌ {e}", exc_info=True)
 
@@ -1262,6 +1206,7 @@ def _print_header(cycle: int, mode: str, opus_status=None, news_blocked: bool = 
     logger.info(f"\n{C.CYAN}{'━' * 52}{C.RST}\n{badges}  Cycle {C.BOLD}#{cycle}{C.RST}  │  {time.strftime('%H:%M:%S')}  │  {time_utils.get_current_session_label()}\n{C.CYAN}{'━' * 52}{C.RST}")
 
 def main():
+    global RUNTIME_STRATEGY_OVERRIDES
     args = parse_args()
     if args.mode == "live" and getattr(db, "fallback_mode", False):
         logger.critical(
@@ -1278,6 +1223,9 @@ def main():
     require_positive_score = _resolve_override_require_positive_score(args)
     require_positive_pnl = _resolve_override_require_positive_pnl(args)
     _apply_runtime_live_symbol_overrides(args.mode)
+    RUNTIME_STRATEGY_OVERRIDES = _resolve_runtime_strategy_overrides(args.mode)
+    if RUNTIME_STRATEGY_OVERRIDES:
+        logger.warning(f"🧠 [RUNTIME] Strategy overrides active: {RUNTIME_STRATEGY_OVERRIDES}")
     _apply_backtest_tf_overrides(
         enabled=use_overrides,
         min_trades=min_trades,

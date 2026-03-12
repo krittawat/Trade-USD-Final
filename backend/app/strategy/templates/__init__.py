@@ -259,4 +259,13 @@ _SEED_REGISTRY = [
      "asset_class": "*",
      "suitable_regimes": ["trending_up", "trending_down", "high_volatility", "breakout", "liquidity_sweep"],
      "priority": 135},
+
+    # ══════════════════════════════════════════════════════════════
+    # Alpha V7 ICT Strategy — ICT Max Efficiency (Kill Zones + FVG)
+    # ══════════════════════════════════════════════════════════════
+    {"strategy_name": "alpha_v7_ict", "class_name": "AlphaV7ICTStrategy",
+     "module_path": "app.strategy.templates.alpha_v7_ict", "timeframe": "M5",
+     "asset_class": "*",
+     "suitable_regimes": ["trending_up", "trending_down", "high_volatility", "breakout", "liquidity_sweep", "accumulation"],
+     "priority": 140},
 ]

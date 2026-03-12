@@ -68,9 +68,15 @@ def signal_indices_ultimate(df: pd.DataFrame, context: dict) -> dict:
     # Price Action Layer
     patterns = struct.get('patterns', {})
     if patterns.get('engulf_bull') or patterns.get('morning_star'):
-        b_score += 30; b_reasons.append("PA: Bullish Momentum Trigger")
+        b_score += 40; b_reasons.append("PA: Bullish Momentum Trigger")
     if patterns.get('engulf_bear') or patterns.get('evening_star'):
-        s_score += 30; s_reasons.append("PA: Bearish Momentum Trigger")
+        s_score += 40; s_reasons.append("PA: Bearish Momentum Trigger")
+
+    # Volume Expansion Layer
+    vol_ratio = float(latest.get('vol_ratio', 1.0))
+    if vol_ratio >= 1.2:
+        b_score += 15; b_reasons.append(f"Vol: Expansion ({vol_ratio:.1f}x)")
+        s_score += 15; s_reasons.append(f"Vol: Expansion ({vol_ratio:.1f}x)")
 
     # ─── 4. Decision ───
     side = None
@@ -78,11 +84,11 @@ def signal_indices_ultimate(df: pd.DataFrame, context: dict) -> dict:
     reasons = []
     
     # Indices move fast — we need high conviction
-    if b_score >= 80:
+    if b_score >= 75:
         side = "BUY"
         score = b_score
         reasons = b_reasons
-    elif s_score >= 80:
+    elif s_score >= 75:
         side = "SELL"
         score = s_score
         reasons = s_reasons

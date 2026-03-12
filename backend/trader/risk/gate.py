@@ -63,6 +63,17 @@ class RiskEngine:
         except Exception:
             return 0.0
 
+    def _resolve_tick_volume_config(self, symbol: str) -> dict:
+        base_cfg = dict(self.tick_volume_config or {})
+        overrides = (base_cfg.get("symbol_overrides", {}) or {})
+        raw_override = overrides.get(self._normalize_symbol_key(symbol))
+        if isinstance(raw_override, dict):
+            merged = dict(base_cfg)
+            merged.update({k: v for k, v in raw_override.items() if v is not None})
+            merged["symbol_overrides"] = overrides
+            return merged
+        return base_cfg
+
     def risk_gate(self, signal: dict, account_state: dict, market_state: dict,
                   opus_status=None, current_session: str = "UNKNOWN",
                   session_consecutive_losses: int = None) -> dict:
@@ -236,7 +247,7 @@ class RiskEngine:
             reasons.append(f"ADVISORY: Low Volatility (Vol Ratio {current_vol_ratio:.2f}) - Reduced Lot Mode")
 
         # 6.6 Tick Volume Entry Gate (institutional participation)
-        tv_cfg = self.tick_volume_config or {}
+        tv_cfg = self._resolve_tick_volume_config(signal.get("symbol", ""))
         has_tick_volume_ctx = any(
             key in market_state for key in ("tick_vol_ratio", "tick_volume_side", "tick_volume_climax")
         )
@@ -256,10 +267,22 @@ class RiskEngine:
                 tv_ratio = current_vol_ratio
 
             entry_ratio_min = float(tv_cfg.get("entry_ratio_min", 1.15))
+            large_volume_ratio_min = max(
+                entry_ratio_min,
+                float(tv_cfg.get("large_volume_ratio_min", 1.35))
+            )
+            require_large_volume = bool(tv_cfg.get("require_large_volume_for_strict_models", True))
             if strict_entry and tv_ratio < entry_ratio_min:
                 reasons.append(
                     f"BLOCKED: Tick Volume {tv_ratio:.2f}x below entry gate "
                     f"{entry_ratio_min:.2f}x"
+                )
+                allowed = False
+
+            if strict_entry and require_large_volume and tv_ratio < large_volume_ratio_min:
+                reasons.append(
+                    f"BLOCKED: Tick Volume {tv_ratio:.2f}x below large-volume gate "
+                    f"{large_volume_ratio_min:.2f}x"
                 )
                 allowed = False
 
@@ -268,6 +291,17 @@ class RiskEngine:
                 allowed = False
 
             volume_side = str(market_state.get("tick_volume_side", "NEUTRAL")).upper()
+            if (
+                strict_entry
+                and bool(tv_cfg.get("block_neutral_large_volume", True))
+                and volume_side == "NEUTRAL"
+                and tv_ratio >= large_volume_ratio_min
+            ):
+                reasons.append(
+                    f"BLOCKED: Large Tick Volume {tv_ratio:.2f}x but no directional pressure"
+                )
+                allowed = False
+
             opposite_block_ratio = float(tv_cfg.get("opposite_block_ratio", 1.35))
             if side in {"BUY", "SELL"} and volume_side in {"BUY", "SELL"} and volume_side != side and tv_ratio >= opposite_block_ratio:
                 reasons.append(

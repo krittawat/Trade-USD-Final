@@ -1,0 +1,345 @@
+  [MT5] Connected. Fetching 14 days for XAUUSDm (M5)...
+  [DATA] Loaded 2771 bars from MT5 for XAUUSDm (M5)
+  [MT5] symbol details for XAUUSDm: spread=396 point=0.001 tick_size=0.001
+  [WARN] MT5 spread 396pts is off-session inflated -> capped to 50pts
+
+============================================================
+  OPUS Backtest V2 - XAUUSD
+  Bars: 2771 | Lookback: 100 | Hold: 50
+  Timeframe: M5 | Strategy: all
+  Initial Equity: $150.00
+  Spread sim: 50 points
+============================================================
+
+  Computing features on full dataset...
+  Features computed. Starting walk-forward...
+
+[2m20:56:10[0m [97mBRAIN [XAUUSD] Deep Brain loaded from models using model: XAUUSDm[0m
+[2m20:56:10[0m [97mConnected to MT5 successfully.[0m
+[2m20:56:10[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.77x < entry gate 1.15x[0m
+[2m20:56:12[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.89x < entry gate 1.15x[0m
+[2m20:56:12[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.14x < entry gate 1.15x[0m
+[2m20:56:12[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.92x < entry gate 1.15x[0m
+[2m20:56:12[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (1.44x)[0m
+[2m20:56:12[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.19x < large-volume gate 1.35x[0m
+[2m20:56:12[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (1.76x)[0m
+[2m20:56:12[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol large 1.83x but pressure is neutral[0m
+[2m20:56:12[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol large 1.35x but pressure is neutral[0m
+[2m20:56:12[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.17x < large-volume gate 1.35x[0m
+[2m20:56:12[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.96x < entry gate 1.15x[0m
+[2m20:56:12[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.96x < entry gate 1.15x[0m
+[2m20:56:12[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.01x < entry gate 1.15x[0m
+[2m20:56:12[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.90x < entry gate 1.15x[0m
+[2m20:56:13[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.76x < entry gate 1.15x[0m
+[2m20:56:13[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.69x < entry gate 1.15x[0m
+[2m20:56:13[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.76x < entry gate 1.15x[0m
+[2m20:56:13[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.16x < large-volume gate 1.35x[0m
+[2m20:56:13[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.15x < large-volume gate 1.35x[0m
+[2m20:56:13[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.81x < entry gate 1.15x[0m
+[2m20:56:13[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.95x < entry gate 1.15x[0m
+[2m20:56:13[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.90x < entry gate 1.15x[0m
+[2m20:56:13[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.79x < entry gate 1.15x[0m
+[2m20:56:13[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.72x < entry gate 1.15x[0m
+[2m20:56:13[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.88x < entry gate 1.15x[0m
+[2m20:56:13[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.71x < entry gate 1.15x[0m
+[2m20:56:13[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.84x < entry gate 1.15x[0m
+[2m20:56:13[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.22x < large-volume gate 1.35x[0m
+[2m20:56:14[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.09x < entry gate 1.15x[0m
+[2m20:56:14[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.14x < entry gate 1.15x[0m
+[2m20:56:14[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.90x < entry gate 1.15x[0m
+[2m20:56:14[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.07x < entry gate 1.15x[0m
+[2m20:56:14[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (1.44x)[0m
+[2m20:56:14[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.20x < large-volume gate 1.35x[0m
+[2m20:56:14[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.81x < entry gate 1.15x[0m
+[2m20:56:14[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.79x < entry gate 1.15x[0m
+[2m20:56:14[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.82x < entry gate 1.15x[0m
+[2m20:56:14[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.91x < entry gate 1.15x[0m
+[2m20:56:14[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (1.44x)[0m
+[2m20:56:14[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (1.99x)[0m
+[2m20:56:15[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.67x < entry gate 1.15x[0m
+[2m20:56:15[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.58x < entry gate 1.15x[0m
+[2m20:56:15[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.58x < entry gate 1.15x[0m
+[2m20:56:15[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.80x < entry gate 1.15x[0m
+[2m20:56:16[0m [97m🚫 [PRO GUARD] ALPHA_V5_AI XAUUSD blocked: Asia session for metals requires >= 0.80 confidence[0m
+[2m20:56:16[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.14x < entry gate 1.15x[0m
+[2m20:56:16[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.94x < entry gate 1.15x[0m
+[2m20:56:16[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.81x < entry gate 1.15x[0m
+[2m20:56:17[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.16x < large-volume gate 1.35x[0m
+[2m20:56:17[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.02x < entry gate 1.15x[0m
+[2m20:56:17[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.63x < entry gate 1.15x[0m
+[2m20:56:17[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.73x < entry gate 1.15x[0m
+[2m20:56:17[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.83x < entry gate 1.15x[0m
+[2m20:56:17[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.93x < entry gate 1.15x[0m
+[2m20:56:17[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.00x < entry gate 1.15x[0m
+[2m20:56:18[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.00x < entry gate 1.15x[0m
+[2m20:56:18[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.93x < entry gate 1.15x[0m
+[2m20:56:18[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.78x < entry gate 1.15x[0m
+[2m20:56:18[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.89x < entry gate 1.15x[0m
+[2m20:56:18[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.96x < entry gate 1.15x[0m
+[2m20:56:18[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.87x < entry gate 1.15x[0m
+[2m20:56:18[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.90x < entry gate 1.15x[0m
+[2m20:56:18[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.83x < entry gate 1.15x[0m
+[2m20:56:18[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.70x < entry gate 1.15x[0m
+[2m20:56:18[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.04x < entry gate 1.15x[0m
+[2m20:56:18[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (1.42x)[0m
+[2m20:56:18[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.15x < entry gate 1.15x[0m
+[2m20:56:20[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.09x < entry gate 1.15x[0m
+[2m20:56:20[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m20:56:20[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m20:56:20[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m20:56:20[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m20:56:20[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m20:56:20[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m20:56:20[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m20:56:20[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.76x < entry gate 1.15x[0m
+[2m20:56:20[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.82x < entry gate 1.15x[0m
+[2m20:56:22[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.26x < large-volume gate 1.35x[0m
+[2m20:56:22[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.15x < large-volume gate 1.35x[0m
+[2m20:56:23[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.95x < entry gate 1.15x[0m
+[2m20:56:25[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.70x < entry gate 1.15x[0m
+[2m20:56:26[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m20:56:26[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m20:56:26[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m20:56:26[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m20:56:27[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.06x < entry gate 1.15x[0m
+[2m20:56:27[0m [97m🚫 [PRO GUARD] RAPID_PULLBACK XAUUSD blocked: Asia session for metals requires >= 0.80 confidence[0m
+[2m20:56:28[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (2.34x)[0m
+[2m20:56:29[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (2.66x)[0m
+[2m20:56:29[0m [97m🚫 [PRO GUARD] ALPHA_V5_AI XAUUSD blocked: Asia session for metals requires >= 0.80 confidence[0m
+[2m20:56:29[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (1.43x)[0m
+[2m20:56:29[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (1.96x)[0m
+[2m20:56:29[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (2.43x)[0m
+[2m20:56:29[0m [97m🚫 [PRO GUARD] ALPHA_V5_AI XAUUSD blocked: Asia session for metals requires >= 0.80 confidence[0m
+[2m20:56:33[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:33[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:33[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:33[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:33[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.34x < entry gate 1.15x[0m
+[2m20:56:33[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (1.52x)[0m
+[2m20:56:33[0m [97m🚫 [PRO GUARD] ALPHA_V5_AI XAUUSD blocked: Sleep session requires elite setup (0.86 conf / 1.80R)[0m
+[2m20:56:33[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.85x < entry gate 1.15x[0m
+[2m20:56:33[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.30x < entry gate 1.15x[0m
+[2m20:56:34[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.39x < entry gate 1.15x[0m
+[2m20:56:34[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.41x < entry gate 1.15x[0m
+[2m20:56:34[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.47x < entry gate 1.15x[0m
+[2m20:56:34[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.75x < entry gate 1.15x[0m
+[2m20:56:34[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.38x < entry gate 1.15x[0m
+[2m20:56:34[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.27x < large-volume gate 1.35x[0m
+[2m20:56:34[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.52x < entry gate 1.15x[0m
+[2m20:56:36[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.95x < entry gate 1.15x[0m
+[2m20:56:37[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.29x < large-volume gate 1.35x[0m
+[2m20:56:37[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.03x < entry gate 1.15x[0m
+[2m20:56:37[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.03x < entry gate 1.15x[0m
+[2m20:56:38[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.70x < entry gate 1.15x[0m
+[2m20:56:38[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol large 1.60x but pressure is neutral[0m
+[2m20:56:39[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.11x < entry gate 1.15x[0m
+[2m20:56:39[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.11x < entry gate 1.15x[0m
+[2m20:56:39[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (2.64x)[0m
+[2m20:56:39[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (1.81x)[0m
+[2m20:56:39[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (2.23x)[0m
+[2m20:56:39[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol large 1.86x but pressure is neutral[0m
+[2m20:56:39[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (1.91x)[0m
+[2m20:56:39[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.88x < entry gate 1.15x[0m
+[2m20:56:39[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.91x < entry gate 1.15x[0m
+[2m20:56:39[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.51x < entry gate 1.15x[0m
+[2m20:56:39[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.68x < entry gate 1.15x[0m
+[2m20:56:39[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.79x < entry gate 1.15x[0m
+[2m20:56:39[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.71x < entry gate 1.15x[0m
+[2m20:56:40[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.59x < entry gate 1.15x[0m
+[2m20:56:40[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.54x < entry gate 1.15x[0m
+[2m20:56:40[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.57x < entry gate 1.15x[0m
+[2m20:56:40[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.56x < entry gate 1.15x[0m
+[2m20:56:40[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.62x < entry gate 1.15x[0m
+[2m20:56:40[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.84x < entry gate 1.15x[0m
+[2m20:56:40[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m20:56:40[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m20:56:40[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m20:56:40[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:40[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:40[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:40[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:40[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:40[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:40[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:40[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:40[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:40[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:40[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:40[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.51x < entry gate 1.15x[0m
+[2m20:56:40[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.59x < entry gate 1.15x[0m
+[2m20:56:40[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.44x < entry gate 1.15x[0m
+[2m20:56:40[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.61x < entry gate 1.15x[0m
+[2m20:56:42[0m [97m🚫 [PRO GUARD] RAPID_PULLBACK XAUUSD blocked: Asia session for metals requires >= 0.80 confidence[0m
+[2m20:56:42[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.75x < entry gate 1.15x[0m
+[2m20:56:42[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.90x < entry gate 1.15x[0m
+[2m20:56:42[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (1.70x)[0m
+[2m20:56:43[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (1.59x)[0m
+[2m20:56:43[0m [97m🚫 [PRO GUARD] ALPHA_V5_AI XAUUSD blocked: Asia session for metals requires >= 0.80 confidence[0m
+[2m20:56:43[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (3.03x)[0m
+[2m20:56:43[0m [97m🚫 [PRO GUARD] ALPHA_V5_AI XAUUSD blocked: Asia session for metals requires >= 0.80 confidence[0m
+[2m20:56:43[0m [97m🚫 [PRO GUARD] ALPHA_V5_AI XAUUSD blocked: Asia session for metals requires >= 0.80 confidence[0m
+[2m20:56:43[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.25x < large-volume gate 1.35x[0m
+[2m20:56:43[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.92x < entry gate 1.15x[0m
+[2m20:56:43[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.09x < entry gate 1.15x[0m
+[2m20:56:43[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.99x < entry gate 1.15x[0m
+[2m20:56:43[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.05x < entry gate 1.15x[0m
+[2m20:56:43[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.13x < entry gate 1.15x[0m
+[2m20:56:43[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.01x < entry gate 1.15x[0m
+[2m20:56:43[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.81x < entry gate 1.15x[0m
+[2m20:56:44[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.83x < entry gate 1.15x[0m
+[2m20:56:44[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.07x < entry gate 1.15x[0m
+[2m20:56:44[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.16x < large-volume gate 1.35x[0m
+[2m20:56:44[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.92x < entry gate 1.15x[0m
+[2m20:56:44[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.72x < entry gate 1.15x[0m
+[2m20:56:44[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (4.82x)[0m
+[2m20:56:46[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m20:56:46[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m20:56:46[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m20:56:46[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:46[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:46[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:46[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:46[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:46[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:46[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:46[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:46[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:46[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:46[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:46[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.58x < entry gate 1.15x[0m
+[2m20:56:46[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.69x < entry gate 1.15x[0m
+[2m20:56:46[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.88x < entry gate 1.15x[0m
+[2m20:56:46[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.85x < entry gate 1.15x[0m
+[2m20:56:46[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.10x < entry gate 1.15x[0m
+[2m20:56:46[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.95x < entry gate 1.15x[0m
+[2m20:56:46[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.93x < entry gate 1.15x[0m
+[2m20:56:46[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.98x < entry gate 1.15x[0m
+[2m20:56:47[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.30x < large-volume gate 1.35x[0m
+[2m20:56:48[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.16x < large-volume gate 1.35x[0m
+[2m20:56:48[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.94x < entry gate 1.15x[0m
+[2m20:56:48[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.25x < large-volume gate 1.35x[0m
+[2m20:56:48[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.10x < entry gate 1.15x[0m
+[2m20:56:48[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.18x < large-volume gate 1.35x[0m
+[2m20:56:48[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.14x < entry gate 1.15x[0m
+[2m20:56:48[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.21x < large-volume gate 1.35x[0m
+[2m20:56:49[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.03x < entry gate 1.15x[0m
+[2m20:56:49[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.84x < entry gate 1.15x[0m
+[2m20:56:49[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.95x < entry gate 1.15x[0m
+[2m20:56:49[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.74x < entry gate 1.15x[0m
+[2m20:56:49[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.89x < entry gate 1.15x[0m
+[2m20:56:49[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.63x < entry gate 1.15x[0m
+[2m20:56:49[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.73x < entry gate 1.15x[0m
+[2m20:56:49[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.03x < entry gate 1.15x[0m
+[2m20:56:49[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.06x < entry gate 1.15x[0m
+[2m20:56:49[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.18x < large-volume gate 1.35x[0m
+[2m20:56:49[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.19x < large-volume gate 1.35x[0m
+[2m20:56:49[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.21x < large-volume gate 1.35x[0m
+[2m20:56:49[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.89x < entry gate 1.15x[0m
+[2m20:56:49[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.10x < entry gate 1.15x[0m
+[2m20:56:49[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (1.54x)[0m
+[2m20:56:49[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.11x < entry gate 1.15x[0m
+[2m20:56:49[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.00x < entry gate 1.15x[0m
+[2m20:56:49[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.88x < entry gate 1.15x[0m
+[2m20:56:50[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.97x < entry gate 1.15x[0m
+[2m20:56:50[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.79x < entry gate 1.15x[0m
+[2m20:56:50[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.93x < entry gate 1.15x[0m
+[2m20:56:50[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.29x < large-volume gate 1.35x[0m
+[2m20:56:50[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.15x < entry gate 1.15x[0m
+[2m20:56:50[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.13x < entry gate 1.15x[0m
+[2m20:56:51[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (1.92x)[0m
+[2m20:56:52[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m20:56:52[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m20:56:53[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.13x < entry gate 1.15x[0m
+[2m20:56:53[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (2.78x)[0m
+[2m20:56:53[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.21x < large-volume gate 1.35x[0m
+[2m20:56:53[0m [97m🚫 [PRO GUARD] ALPHA_V5_AI XAUUSD blocked: Sleep session requires elite setup (0.86 conf / 1.80R)[0m
+[2m20:56:53[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.71x < entry gate 1.15x[0m
+[2m20:56:53[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.27x < large-volume gate 1.35x[0m
+[2m20:56:53[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.14x < entry gate 1.15x[0m
+[2m20:56:53[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.21x < large-volume gate 1.35x[0m
+[2m20:56:53[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.75x < entry gate 1.15x[0m
+[2m20:56:57[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.80x < entry gate 1.15x[0m
+[2m20:56:58[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (2.08x)[0m
+[2m20:56:58[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol large 1.88x but pressure is neutral[0m
+[2m20:56:58[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (2.48x)[0m
+[2m20:56:58[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.19x < large-volume gate 1.35x[0m
+[2m20:56:58[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.08x < entry gate 1.15x[0m
+[2m20:56:58[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.95x < entry gate 1.15x[0m
+[2m20:56:58[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:58[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:56:58[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:57:02[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.21x < large-volume gate 1.35x[0m
+[2m20:57:04[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.04x < entry gate 1.15x[0m
+[2m20:57:05[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.66x < entry gate 1.15x[0m
+[2m20:57:05[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m20:57:05[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m20:57:05[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m20:57:05[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m20:57:05[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m20:57:05[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 20). Blocking new entries for XAUUSD[0m
+[2m20:57:05[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:57:05[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:57:05[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:57:05[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:57:06[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:57:06[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:57:06[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:57:06[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:57:06[0m [97m🛡️ [NY-CLOSE] Time Block Active (Hour 21). Blocking new entries for XAUUSD[0m
+[2m20:57:06[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.73x < entry gate 1.15x[0m
+[2m20:57:06[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.86x < entry gate 1.15x[0m
+[2m20:57:06[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.57x < entry gate 1.15x[0m
+[2m20:57:06[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.79x < entry gate 1.15x[0m
+[2m20:57:06[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.13x < entry gate 1.15x[0m
+[2m20:57:06[0m [97m🚫 [TICK VOL] RAPID_PULLBACK blocked on XAUUSD: TickVol 1.13x < entry gate 1.15x[0m
+[2m20:57:06[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.68x < entry gate 1.15x[0m
+[2m20:57:06[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.67x < entry gate 1.15x[0m
+[2m20:57:06[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.47x < entry gate 1.15x[0m
+[2m20:57:06[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.34x < entry gate 1.15x[0m
+[2m20:57:06[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.20x < large-volume gate 1.35x[0m
+[2m20:57:06[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.01x < entry gate 1.15x[0m
+[2m20:57:06[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.74x < entry gate 1.15x[0m
+[2m20:57:06[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.68x < entry gate 1.15x[0m
+[2m20:57:07[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.74x < entry gate 1.15x[0m
+[2m20:57:07[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.75x < entry gate 1.15x[0m
+[2m20:57:07[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (1.70x)[0m
+[2m20:57:07[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (1.36x)[0m
+[2m20:57:08[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.95x < entry gate 1.15x[0m
+[2m20:57:08[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol pressure SELL vs signal BUY (1.68x)[0m
+[2m20:57:08[0m [97m🚫 [PRO GUARD] ALPHA_V5_AI XAUUSD blocked: Asia session for metals requires >= 0.80 confidence[0m
+[2m20:57:08[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.15x < entry gate 1.15x[0m
+[2m20:57:08[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.19x < large-volume gate 1.35x[0m
+[2m20:57:08[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.70x < entry gate 1.15x[0m
+[2m20:57:08[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.12x < entry gate 1.15x[0m
+[2m20:57:08[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.98x < entry gate 1.15x[0m
+[2m20:57:08[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.90x < entry gate 1.15x[0m
+[2m20:57:08[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.98x < entry gate 1.15x[0m
+[2m20:57:08[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.29x < large-volume gate 1.35x[0m
+[2m20:57:08[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.09x < entry gate 1.15x[0m
+[2m20:57:09[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.33x < large-volume gate 1.35x[0m
+[2m20:57:09[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.19x < large-volume gate 1.35x[0m
+[2m20:57:09[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.99x < entry gate 1.15x[0m
+[2m20:57:09[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.81x < entry gate 1.15x[0m
+[2m20:57:09[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.90x < entry gate 1.15x[0m
+[2m20:57:09[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.01x < entry gate 1.15x[0m
+[2m20:57:09[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 1.13x < entry gate 1.15x[0m
+[2m20:57:09[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.81x < entry gate 1.15x[0m
+[2m20:57:09[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.74x < entry gate 1.15x[0m
+[2m20:57:09[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.84x < entry gate 1.15x[0m
+[2m20:57:09[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.80x < entry gate 1.15x[0m
+[2m20:57:09[0m [97m🚫 [TICK VOL] ALPHA_V5_AI blocked on XAUUSD: TickVol 0.86x < entry gate 1.15x[0m
+
+============================================================
+  BACKTEST RESULTS - XAUUSD
+============================================================
+  Total Signals Generated : 0
+  Signals Blocked by Risk : 0
+  Trades Executed         : 0
+  Win Rate                : 0%
+  Profit Factor           : 0
+  Max Drawdown            : 0%
+  Net P&L                 : $0
+  Final Equity            : $150.0
+============================================================
+
+  [FILE] Results saved to C:\VibeCode\Trade\backend\trader\data\backtest_XAUUSD_all_M5_14d_20260311_205709.json

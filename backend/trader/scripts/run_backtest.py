@@ -38,7 +38,8 @@ from backend.trader.main import compute_lot_size
 from backend.trader.risk.sizing import sizer
 
 # --- Config ---
-with open("d:/VibeCode/Trade/backend/trader/config/settings.json") as f:
+settings_path = ROOT / "backend" / "trader" / "config" / "settings.json"
+with open(settings_path) as f:
     CONFIG = json.load(f)
 
 risk_engine = RiskEngine()
@@ -111,6 +112,12 @@ STRATEGY_PRESETS = {
         "force_enabled_models": ["INDICATOR_CONFLUENCE"],
         "min_confidence": 0.62,
         "profile": "indicator_confluence",
+    },
+    "alpha_v7_ict": {
+        "whitelist": ["ALPHA_V7_ICT"],
+        "force_enabled_models": ["ALPHA_V7_ICT"],
+        "min_confidence": 0.70,
+        "profile": "alpha_v7_ict",
     },
     "momentum_rider": {
         "whitelist": ["MOMENTUM_RIDER"],
@@ -601,6 +608,7 @@ def main():
             "usoil_momentum",
             "rapid_pullback",
             "indicator_confluence",
+            "alpha_v7_ict",
         ],
         help="Backtest all selector models or force a single model.",
     )
@@ -628,7 +636,7 @@ def main():
     metrics = engine.run(df)
     suffix_base = f"{args.timeframe.upper()}_{args.days}d" if args.days and args.days > 0 else f"{args.timeframe.upper()}_{args.bars}b"
     suffix = f"{args.strategy}_{suffix_base}"
-    results_path = f"d:/VibeCode/Trade/backend/trader/data/backtest_{args.symbol}_{suffix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    results_path = ROOT / "backend" / "trader" / "data" / f"backtest_{args.symbol}_{suffix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     with open(results_path, "w") as f:
         json.dump(metrics, f, indent=2)
     print(f"\n  [FILE] Results saved to {results_path}")

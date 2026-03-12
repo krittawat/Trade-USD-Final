@@ -456,20 +456,33 @@ class AlphaV6SMCStrategy(BaseStrategy):
                     if sl_dist > max_sl_dist:
                         pass
         if long_signal:
-            sl_price = last_pl - (self.sl_mult * atr_val) if last_pl != float('-inf') else current_close - (2.5 * self.sl_mult * atr_val)
+            # Tighter SL for sweeps: Use the sweep low + buffer
+            if sweep == "BULLISH_SWEEP" and 'low' in df.columns:
+                sl_price = df['low'].iloc[-1] - (0.2 * atr_val)
+            else:
+                sl_price = last_pl - (self.sl_mult * atr_val) if last_pl != float('-inf') else current_close - (2.5 * self.sl_mult * atr_val)
             
             # --- Enforce Hard Cap ---
             max_sl_dist = current_close * 0.02
             if (current_close - sl_price) > max_sl_dist:
                 sl_price = current_close - max_sl_dist
             
+            # --- Spread Trap Protection ---
+            if "XAU" in symbol.upper() or "GOLD" in symbol.upper():
+                sl_price -= 0.30  # 30 points buffer
+            
             sl_dist = abs(current_close - sl_price)
             # OPUS TRADING: Sweeps have high win rate, push for higher RR
             tp_mult_final = max(2.5, self.tp_mult) if sweep == "BULLISH_SWEEP" else self.tp_mult
+            
             tp_price = current_close + (sl_dist * tp_mult_final)
             
             # === MIN RR GATE (reject low-quality setups) ===
             actual_rr = (tp_price - current_close) / sl_dist if sl_dist > 0 else 0
+            
+            # 🇹🇭 [THAI LOCALIZATION]
+            thai_reason = f"พบสัญญาณ BUY (+SSL +{struct} +{sweep})"
+            Decision_reason = f"{thai_reason} | SSL + {struct} + {sweep} (ADX={curr_adx:.1f}, RR={actual_rr:.1f})"
             if actual_rr < getattr(self, 'min_rr', 1.5):
                 return Decision(
                     symbol=symbol, action=Action.HOLD, confidence=0.0,
@@ -484,25 +497,38 @@ class AlphaV6SMCStrategy(BaseStrategy):
                 action=Action.BUY,
                 strategy_name="alpha_v6_smc",
                 confidence=confidence,
-                reason=f"SSL + {struct} + {sweep} (ADX={curr_adx:.1f}, RR={actual_rr:.1f})",
+                reason=Decision_reason,
                 stop_loss=sl_price,
                 take_profit=tp_price,
                 tags=["sweep", sweep, "session_ok", str(session_ok), "adx", str(curr_adx)]
             )
             
         elif short_signal:
-            sl_price = last_ph + (self.sl_mult * atr_val) if last_ph != float('inf') else current_close + (2.5 * self.sl_mult * atr_val)
+            # Tighter SL for sweeps: Use the sweep high + buffer
+            if sweep == "BEARISH_SWEEP" and 'high' in df.columns:
+                sl_price = df['high'].iloc[-1] + (0.2 * atr_val)
+            else:
+                sl_price = last_ph + (self.sl_mult * atr_val) if last_ph != float('inf') else current_close + (2.5 * self.sl_mult * atr_val)
             
             max_sl_dist = current_close * 0.02
             if (sl_price - current_close) > max_sl_dist:
                 sl_price = current_close + max_sl_dist
             
+            # --- Spread Trap Protection ---
+            if "XAU" in symbol.upper() or "GOLD" in symbol.upper():
+                sl_price += 0.30  # 30 points buffer
+                
             sl_dist = abs(sl_price - current_close)
             tp_mult_final = max(2.5, self.tp_mult) if sweep == "BEARISH_SWEEP" else self.tp_mult
+            
             tp_price = current_close - (sl_dist * tp_mult_final)
             
             # === MIN RR GATE ===
             actual_rr = (current_close - tp_price) / sl_dist if sl_dist > 0 else 0
+            
+            # 🇹🇭 [THAI LOCALIZATION]
+            thai_reason = f"พบสัญญาณ SELL (+SSL +{struct} +{sweep})"
+            Decision_reason = f"{thai_reason} | SSL + {struct} + {sweep} (ADX={curr_adx:.1f}, RR={actual_rr:.1f})"
             if actual_rr < getattr(self, 'min_rr', 1.5):
                 return Decision(
                     symbol=symbol, action=Action.HOLD, confidence=0.0,
@@ -517,7 +543,7 @@ class AlphaV6SMCStrategy(BaseStrategy):
                 action=Action.SELL,
                 strategy_name="alpha_v6_smc",
                 confidence=confidence,
-                reason=f"SSL + {struct} + {sweep} (ADX={curr_adx:.1f}, RR={actual_rr:.1f})",
+                reason=Decision_reason,
                 stop_loss=sl_price,
                 take_profit=tp_price,
                 tags=["sweep", sweep, "session_ok", str(session_ok), "adx", str(curr_adx)]
@@ -527,7 +553,7 @@ class AlphaV6SMCStrategy(BaseStrategy):
             symbol=symbol,
             action=Action.HOLD,
             confidence=0.0,
-            reason=f"No Setup. Struct: {struct}, Sweep: {sweep}",
+            reason=f"No Setup. Struct: {struct}, Sweep: {sweep} | [TH] ยังไม่มีสัญญาณเทรด",
             strategy_name="alpha_v6_smc"
         )
 
